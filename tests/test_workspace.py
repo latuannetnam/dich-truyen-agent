@@ -182,6 +182,22 @@ def test_resume_blocks_state_chapter_missing_from_catalog(
     assert "absent from catalog" in result.reason
 
 
+def test_resume_blocks_catalog_chapter_missing_from_state(
+    books_root: Path,
+    metadata: BookMetadata,
+    catalog: ChapterCatalog,
+    style: TranslationStyle,
+) -> None:
+    initialized_workspace(books_root, metadata, catalog, style)
+    paths = workspace_paths(books_root, metadata.book_slug)
+    atomic_write_yaml(paths.state, BookState())
+
+    result = resume_workspace(books_root, metadata.book_slug)
+
+    assert result.status is OperationStatus.BLOCKED
+    assert "absent from state" in result.reason
+
+
 def test_workspace_yaml_is_validated_on_resume(
     books_root: Path,
     metadata: BookMetadata,

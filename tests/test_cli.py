@@ -57,6 +57,35 @@ def test_validate_style_is_compact(tmp_path: Path) -> None:
     assert result.reason == "style is valid: custom"
 
 
+def test_init_book_resume_uses_workspace_style_snapshot(tmp_path: Path) -> None:
+    style = tmp_path / "style.yaml"
+    style.write_text(
+        "name: custom\ndescription: Custom\nguidelines: []\n"
+        "vocabulary: {}\ntone: formal\nexamples: []\n",
+        encoding="utf-8",
+    )
+    command = [
+        "init-book",
+        "--books-root",
+        str(tmp_path / "books"),
+        "--slug",
+        "demo",
+        "--source-url",
+        "https://example.com/book",
+        "--title",
+        "Demo",
+        "--style",
+        str(style),
+    ]
+    assert run_command(build_parser().parse_args(command)).status is OperationStatus.OK
+    style.unlink()
+
+    result = run_command(build_parser().parse_args([*command, "--resume"]))
+
+    assert result.status is OperationStatus.OK
+    assert result.reason == "workspace is valid"
+
+
 def test_skill_skeletons_are_honest_phase_one_contracts() -> None:
     skills_root = Path(".codex") / "skills"
     for skill_name in (

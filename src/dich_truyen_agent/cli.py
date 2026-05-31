@@ -14,7 +14,11 @@ from dich_truyen_agent.models import (
 from dich_truyen_agent.paths import workspace_paths
 from dich_truyen_agent.storage import atomic_write_yaml
 from dich_truyen_agent.styles import load_selected_style, load_style
-from dich_truyen_agent.workspace import initialize_workspace, inspect_workspace
+from dich_truyen_agent.workspace import (
+    initialize_workspace,
+    inspect_workspace,
+    resume_workspace,
+)
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
@@ -60,20 +64,22 @@ def _persist_result(workspace_root: Path | None, command: str, result: Operation
 def run_command(args: argparse.Namespace) -> OperationResult:
     workspace_root: Path | None = getattr(args, "workspace", None)
     if args.command == "init-book":
-        style = load_selected_style(PROJECT_ROOT, args.style)
-        metadata = BookMetadata(
-            book_slug=args.slug,
-            source_url=args.source_url,
-            title=args.title,
-            author=args.author,
-        )
-        result = initialize_workspace(
-            args.books_root,
-            metadata,
-            ChapterCatalog(),
-            style,
-            resume=args.resume,
-        )
+        if args.resume:
+            result = resume_workspace(args.books_root, args.slug)
+        else:
+            style = load_selected_style(PROJECT_ROOT, args.style)
+            metadata = BookMetadata(
+                book_slug=args.slug,
+                source_url=args.source_url,
+                title=args.title,
+                author=args.author,
+            )
+            result = initialize_workspace(
+                args.books_root,
+                metadata,
+                ChapterCatalog(),
+                style,
+            )
         workspace_root = workspace_paths(args.books_root, args.slug).root
     elif args.command == "inspect-workspace":
         result = inspect_workspace(args.workspace)

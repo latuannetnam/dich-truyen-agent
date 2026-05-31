@@ -77,9 +77,14 @@ def initialize_workspace(
 
 def validate_catalog_state(catalog: ChapterCatalog, state: BookState) -> None:
     catalog_ids = {chapter.chapter_id for chapter in catalog.chapters}
+    state_ids = {chapter.chapter_id for chapter in state.chapters}
     for chapter in state.chapters:
         if chapter.chapter_id not in catalog_ids:
             raise ValueError(f"state chapter {chapter.chapter_id} is absent from catalog")
+    missing_state_ids = catalog_ids - state_ids
+    if missing_state_ids:
+        missing = ", ".join(str(chapter_id) for chapter_id in sorted(missing_state_ids))
+        raise ValueError(f"catalog chapters absent from state: {missing}")
 
 
 def _validate_completed_artifacts(
