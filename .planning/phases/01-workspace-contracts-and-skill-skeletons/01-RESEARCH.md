@@ -199,6 +199,23 @@ Split Phase 1 into the two roadmap plans:
 `01-02` depends on `01-01` because gates and style snapshots consume workspace paths, validated
 models, and atomic storage helpers.
 
+## Package Legitimacy Audit
+
+> Required because Phase 1 installs external Python packages. Verified on 2026-05-31 with
+> `slopcheck install pydantic PyYAML pytest ruff` and `python -m pip index versions <package>`.
+> The installed `slopcheck` version does not support the newer `--json` flag, so its supported
+> plain-text verdicts were used.
+
+| Package | Registry | Current PyPI Version | Downloads | Source Repo | slopcheck | Disposition |
+|---------|----------|----------------------|-----------|-------------|-----------|-------------|
+| `pydantic` | PyPI | `2.13.4` | Not reported by `pip index` | `github.com/pydantic/pydantic` | `[OK]` | Approved |
+| `PyYAML` | PyPI | `6.0.3` | Not reported by `pip index` | `github.com/yaml/pyyaml` | `[OK]` | Approved |
+| `pytest` | PyPI | `9.0.3` | Not reported by `pip index` | `github.com/pytest-dev/pytest` | `[OK]` | Approved |
+| `ruff` | PyPI | `0.15.15` | Not reported by `pip index` | `github.com/astral-sh/ruff` | `[OK]` | Approved |
+
+**Packages removed due to slopcheck `[SLOP]` verdict:** none
+**Packages flagged as suspicious `[SUS]`:** none
+
 ## Sources
 
 - `.planning/phases/01-workspace-contracts-and-skill-skeletons/01-CONTEXT.md`
