@@ -24,7 +24,7 @@ review checkpoints while keeping each agent task small, inspectable, and recover
 Phase: 1 of 6 (Workspace Contracts and Skill Skeletons)
 Plan: 0 of 2 in current phase
 Status: Ready to plan
-Last activity: 2026-05-31 - Initial layered roadmap drafted
+Last activity: 2026-05-31 - Project initialized with approved layered roadmap
 
 Progress: [----------] 0%
 
@@ -79,5 +79,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-05-31
-Stopped at: Initial roadmap drafted; waiting for roadmap approval
+Stopped at: Project initialized; ready to discuss Phase 1
 Resume file: None
