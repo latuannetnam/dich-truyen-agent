@@ -1,6 +1,7 @@
 # GSD Agent Configuration — managed by get-shit-done installer
 # GSD codex_hooks ownership: section
 
+sandbox_mode = "workspace-write"
 [features]
 hooks = true
 
