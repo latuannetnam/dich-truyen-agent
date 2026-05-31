@@ -52,7 +52,7 @@ project-local skill entrypoint contracts.
 **Plans**: 2 plans
 Plans:
 
-- [ ] 01-01-PLAN.md: Define package layout, Pydantic contracts, workspace initialization, and atomic file
+- [x] 01-01-PLAN.md: Define package layout, Pydantic contracts, workspace initialization, and atomic file
       operations.
 
 - [ ] 01-02-PLAN.md: Add checkpoint enforcement, style loading, default `tien_hiep` template, and skill
@@ -195,7 +195,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Workspace Contracts and Skill Skeletons | 0/2 | Not started | - |
+| 1. Workspace Contracts and Skill Skeletons | 1/2 | In Progress|  |
 | 2. Crawl and Raw Review Gate | 0/3 | Not started | - |
 | 3. Glossary Lifecycle | 0/2 | Not started | - |
 | 4. Sequential Agent-Native Translation | 0/3 | Not started | - |
