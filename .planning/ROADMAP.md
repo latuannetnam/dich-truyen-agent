@@ -42,9 +42,9 @@ project-local skill entrypoint contracts.
 **Plans**: 2 plans
 
 Plans:
-- [ ] 01-01: Define package layout, Pydantic contracts, workspace initialization, and atomic file
+- [ ] 01-01-PLAN.md: Define package layout, Pydantic contracts, workspace initialization, and atomic file
       operations.
-- [ ] 01-02: Add checkpoint enforcement, style loading, default `tien_hiep` template, and skill
+- [ ] 01-02-PLAN.md: Add checkpoint enforcement, style loading, default `tien_hiep` template, and skill
       skeleton contracts.
 
 ### Phase 2: Crawl and Raw Review Gate
