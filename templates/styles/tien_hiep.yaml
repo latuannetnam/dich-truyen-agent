@@ -1,0 +1,13 @@
+name: tien_hiep
+description: Phong cach dich tien hiep tieng Viet ro rang, trang trong va nhat quan.
+guidelines:
+  - Giu dung y nghia nguyen tac cua nguyen tac va mach truyen.
+  - Dung cach xung ho nhat quan theo boi canh tu tien.
+  - Uu tien cau van tu nhien, tranh dich tung chu cung nhac.
+vocabulary:
+  修为: tu vi
+  灵气: linh khi
+  丹田: dan dien
+tone: trang trong, co phong
+examples:
+  - Han khe nham mat, cham rai van chuyen linh khi trong dan dien.
