@@ -5,7 +5,7 @@ milestone_name: milestone
 status: planning
 stopped_at: Phase 01 complete; ready to plan Phase 02
 last_updated: "2026-05-31T13:01:11.979Z"
-last_activity: 2026-05-31 -- Phase 01 verified and completed
+last_activity: 2026-05-31 -- Completed quick task 260531-ry0: Remove tracked local agent settings
 current_phase_name: crawl-and-raw-review-gate
 last_activity_desc: Phase 01 verified and completed
 progress:
@@ -31,7 +31,7 @@ review checkpoints while keeping each agent task small, inspectable, and recover
 Phase: 2 of 6 (crawl and raw review gate)
 Plan: Not started
 Status: Ready to plan
-Last activity: 2026-05-31
+Last activity: 2026-05-31 - Completed quick task 260531-ry0: Remove tracked local agent settings
 
 Progress: [████████████████████] 2/2 plans (100%)
 
@@ -78,6 +78,12 @@ None yet.
 - Phase 2 needs representative crawl fixtures from real target domains.
 - Phase 4 must confirm the exact native Codex worker invocation contract.
 - Phase 6 must document EPUBCheck installation and invocation behavior.
+
+### Quick Tasks Completed
+
+| # | Description | Date | Commit | Directory |
+|---|-------------|------|--------|-----------|
+| 260531-ry0 | Remove tracked local agent settings | 2026-05-31 | 745a514 | [260531-ry0-remove-tracked-local-claude-code-and-cod](./quick/260531-ry0-remove-tracked-local-claude-code-and-cod/) |
 
 ## Deferred Items
 
