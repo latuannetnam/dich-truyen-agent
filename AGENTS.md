@@ -178,6 +178,26 @@ Use these entry points:
 Do not make direct repo edits outside a GSD workflow unless the user explicitly asks to bypass it.
 <!-- GSD:workflow-end -->
 
+## Windows Sandbox ACL Troubleshooting
+
+When running pytest inside a Codex Windows sandbox, use:
+
+```powershell
+$env:UV_CACHE_DIR="$PWD\.uv-cache"
+uv run pytest
+```
+
+Do not pass `--basetemp`. Pytest normally creates session directories, `tmp_path` children, and
+cache staging directories with mode `0o700`. On Windows this becomes a protected owner-only
+DACL that drops the inherited Codex workspace capability SID. The restricted sandbox token
+then receives `WinError 5: Access is denied` when reopening a directory it just created.
+
+This is not primarily a parent-directory ACL problem. Pre-creating writable parents such as
+`C:\tmp` does not fix children recreated with owner-only ACLs. The Windows-only compatibility
+shim in `tests/conftest.py` creates pytest temporary directories with inherited ACLs and
+initializes `.pytest_cache` before pytest uses its inaccessible staging path. If pytest is
+upgraded, rerun the suite from a fresh subagent because the shim patches private pytest helpers.
+
 <!-- GSD:profile-start -->
 
 ## Developer Profile
