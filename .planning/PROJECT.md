@@ -121,6 +121,7 @@ The v1 user flow is deliberately checkpointed:
 | Use separate user checkpoints after crawl and QA | Raw extraction and translation quality should be reviewable before expensive or irreversible downstream steps | - Pending |
 | Use HTTP crawl helpers with Playwright fallback | Static sites stay lightweight while JavaScript-rendered sites remain possible | - Pending |
 | Run crawl helpers autonomously and report compact results | Avoid spending agent tokens on routine per-chapter progress while preserving logs for diagnosis | - Pending |
+| Build v1 in layered dependency-driven phases | Stable workspace and gate contracts are prerequisites for trustworthy downstream behavior | - Pending |
 | Store reusable domain crawl profiles plus per-book overrides | Reuse known extraction rules without allowing one unusual book to affect every book on a domain | - Pending |
 | Translate one chapter per isolated subagent, strictly sequentially | Previous translated output is needed for continuity, pronouns, and terminology | - Pending |
 | Generate glossary automatically and merge new terms after each chapter | Later chapters immediately benefit from newly discovered names and terms | - Pending |

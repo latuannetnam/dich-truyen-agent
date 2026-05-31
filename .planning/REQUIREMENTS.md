@@ -137,51 +137,51 @@ Updated during roadmap creation. Every v1 requirement must map to exactly one ph
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| SKIL-01 | TBD | Pending |
-| WORK-01 | TBD | Pending |
-| WORK-02 | TBD | Pending |
-| WORK-03 | TBD | Pending |
-| WORK-04 | TBD | Pending |
-| CRAW-01 | TBD | Pending |
-| CRAW-02 | TBD | Pending |
-| CRAW-03 | TBD | Pending |
-| CRAW-04 | TBD | Pending |
-| CRAW-05 | TBD | Pending |
-| CRAW-06 | TBD | Pending |
-| CRAW-07 | TBD | Pending |
-| CRAW-08 | TBD | Pending |
-| CRAW-09 | TBD | Pending |
-| CRAW-10 | TBD | Pending |
-| CRAW-11 | TBD | Pending |
-| STYL-01 | TBD | Pending |
-| STYL-02 | TBD | Pending |
-| GLOS-01 | TBD | Pending |
-| GLOS-02 | TBD | Pending |
-| GLOS-03 | TBD | Pending |
-| GLOS-04 | TBD | Pending |
-| TRAN-01 | TBD | Pending |
-| TRAN-02 | TBD | Pending |
-| TRAN-03 | TBD | Pending |
-| TRAN-04 | TBD | Pending |
-| TRAN-05 | TBD | Pending |
-| TRAN-06 | TBD | Pending |
-| TRAN-07 | TBD | Pending |
-| QUAL-01 | TBD | Pending |
-| QUAL-02 | TBD | Pending |
-| QUAL-03 | TBD | Pending |
-| QUAL-04 | TBD | Pending |
-| QUAL-05 | TBD | Pending |
-| EXPT-01 | TBD | Pending |
-| EXPT-02 | TBD | Pending |
-| EXPT-03 | TBD | Pending |
-| EXPT-04 | TBD | Pending |
-| EXPT-05 | TBD | Pending |
+| SKIL-01 | Phase 6 | Pending |
+| WORK-01 | Phase 1 | Pending |
+| WORK-02 | Phase 1 | Pending |
+| WORK-03 | Phase 1 | Pending |
+| WORK-04 | Phase 1 | Pending |
+| CRAW-01 | Phase 2 | Pending |
+| CRAW-02 | Phase 2 | Pending |
+| CRAW-03 | Phase 2 | Pending |
+| CRAW-04 | Phase 2 | Pending |
+| CRAW-05 | Phase 2 | Pending |
+| CRAW-06 | Phase 2 | Pending |
+| CRAW-07 | Phase 2 | Pending |
+| CRAW-08 | Phase 2 | Pending |
+| CRAW-09 | Phase 2 | Pending |
+| CRAW-10 | Phase 2 | Pending |
+| CRAW-11 | Phase 2 | Pending |
+| STYL-01 | Phase 1 | Pending |
+| STYL-02 | Phase 1 | Pending |
+| GLOS-01 | Phase 3 | Pending |
+| GLOS-02 | Phase 3 | Pending |
+| GLOS-03 | Phase 3 | Pending |
+| GLOS-04 | Phase 3 | Pending |
+| TRAN-01 | Phase 4 | Pending |
+| TRAN-02 | Phase 4 | Pending |
+| TRAN-03 | Phase 4 | Pending |
+| TRAN-04 | Phase 4 | Pending |
+| TRAN-05 | Phase 4 | Pending |
+| TRAN-06 | Phase 4 | Pending |
+| TRAN-07 | Phase 4 | Pending |
+| QUAL-01 | Phase 5 | Pending |
+| QUAL-02 | Phase 5 | Pending |
+| QUAL-03 | Phase 5 | Pending |
+| QUAL-04 | Phase 5 | Pending |
+| QUAL-05 | Phase 5 | Pending |
+| EXPT-01 | Phase 6 | Pending |
+| EXPT-02 | Phase 6 | Pending |
+| EXPT-03 | Phase 6 | Pending |
+| EXPT-04 | Phase 6 | Pending |
+| EXPT-05 | Phase 6 | Pending |
 
 **Coverage:**
 - v1 requirements: 39 total
-- Mapped to phases: 0
-- Unmapped: 39
+- Mapped to phases: 39
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-05-31*
-*Last updated: 2026-05-31 after initial definition*
+*Last updated: 2026-05-31 after roadmap creation*
