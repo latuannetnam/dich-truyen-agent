@@ -21,7 +21,9 @@ checkpoints while keeping each agent task small, inspectable, and recoverable.
 
 ### Validated
 
-(None yet - ship to validate)
+- [x] Phase 1 established atomic filesystem workspace contracts, strict resume inspection, and
+      hash-backed approval checkpoint gates.
+- [x] Phase 1 validated custom YAML translation styles and the bundled `tien_hiep` template.
 
 ### Active
 
@@ -40,7 +42,6 @@ checkpoints while keeping each agent task small, inspectable, and recoverable.
       the completed Vietnamese translation of the previous chapter as context.
 - [ ] Retry failed chapter translations with configurable backoff and stop the translation run
       if retries are exhausted so the user can resolve the issue and resume safely.
-- [ ] Support custom YAML translation styles and ship a default `tien_hiep` template.
 - [ ] Generate a deterministic QA report covering structural and glossary consistency issues,
       then require user review before export.
 - [ ] Export a validated EPUB 3.3 ebook directly and convert it to AZW3, MOBI, or PDF through
@@ -115,10 +116,10 @@ The v1 user flow is deliberately checkpointed:
 
 | Decision | Rationale | Outcome |
 |----------|-----------|---------|
-| Use a hybrid agent-native architecture | Agents are effective for analysis, translation, and repair; deterministic scripts are safer for metadata, validation, and export | - Pending |
+| Use a hybrid agent-native architecture | Agents are effective for analysis, translation, and repair; deterministic scripts are safer for metadata, validation, and export | Phase 1 validated the deterministic workspace helper foundation |
 | Operate v1 through Codex skills without UI or API | Keeps the first release focused on the agent-native workflow | - Pending |
 | Support Codex first with portable contracts | Delivers one reliable runtime before adding adapters | - Pending |
-| Use separate user checkpoints after crawl and QA | Raw extraction and translation quality should be reviewable before expensive or irreversible downstream steps | - Pending |
+| Use separate user checkpoints after crawl and QA | Raw extraction and translation quality should be reviewable before expensive or irreversible downstream steps | Phase 1 validated reusable hash-backed checkpoint gates |
 | Use HTTP crawl helpers with Playwright fallback | Static sites stay lightweight while JavaScript-rendered sites remain possible | - Pending |
 | Run crawl helpers autonomously and report compact results | Avoid spending agent tokens on routine per-chapter progress while preserving logs for diagnosis | - Pending |
 | Build v1 in layered dependency-driven phases | Stable workspace and gate contracts are prerequisites for trustworthy downstream behavior | - Pending |
@@ -147,4 +148,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with the current implementation state and lessons learned.
 
 ---
-*Last updated: 2026-05-31 after initialization*
+*Last updated: 2026-05-31 after Phase 1 completion*
