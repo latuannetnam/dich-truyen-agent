@@ -14,7 +14,7 @@ validated ebook export. Each phase leaves an inspectable capability that later p
 - Integer phases (1, 2, 3): Planned milestone work
 - Decimal phases (2.1, 2.2): Urgent insertions (marked with INSERTED)
 
-- [ ] **Phase 1: Workspace Contracts and Skill Skeletons** - Establish the safe local foundation
+- [x] **Phase 1: Workspace Contracts and Skill Skeletons** - Establish the safe local foundation (completed 2026-05-31)
       shared by every workflow step.
 
 - [ ] **Phase 2: Crawl and Raw Review Gate** - Crawl books autonomously into validated raw
@@ -55,7 +55,7 @@ Plans:
 - [x] 01-01-PLAN.md: Define package layout, Pydantic contracts, workspace initialization, and atomic file
       operations.
 
-- [ ] 01-02-PLAN.md: Add checkpoint enforcement, style loading, default `tien_hiep` template, and skill
+- [x] 01-02-PLAN.md: Add checkpoint enforcement, style loading, default `tien_hiep` template, and skill
       skeleton contracts.
 
 ### Phase 2: Crawl and Raw Review Gate
@@ -195,7 +195,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Workspace Contracts and Skill Skeletons | 1/2 | In Progress|  |
+| 1. Workspace Contracts and Skill Skeletons | 2/2 | Complete   | 2026-05-31 |
 | 2. Crawl and Raw Review Gate | 0/3 | Not started | - |
 | 3. Glossary Lifecycle | 0/2 | Not started | - |
 | 4. Sequential Agent-Native Translation | 0/3 | Not started | - |

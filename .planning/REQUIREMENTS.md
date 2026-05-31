@@ -22,7 +22,7 @@ Requirements for the initial release. Each requirement maps to one roadmap phase
 - [x] **WORK-03**: User can safely resume each workflow step because helper writes are atomic and
       completed work is not silently overwritten.
 
-- [ ] **WORK-04**: User cannot start a gated workflow step until its required approval checkpoint
+- [x] **WORK-04**: User cannot start a gated workflow step until its required approval checkpoint
       exists.
 
 ### Crawling
@@ -58,10 +58,10 @@ Requirements for the initial release. Each requirement maps to one roadmap phase
 
 ### Styles and Glossary
 
-- [ ] **STYL-01**: User can configure a book's translation behavior with a custom YAML style
+- [x] **STYL-01**: User can configure a book's translation behavior with a custom YAML style
       file.
 
-- [ ] **STYL-02**: User can start from the bundled default `tien_hiep` YAML style template.
+- [x] **STYL-02**: User can start from the bundled default `tien_hiep` YAML style template.
 - [ ] **GLOS-01**: User receives an automatically generated initial glossary after approving
       crawled raw content.
 
@@ -168,7 +168,7 @@ Updated during roadmap creation. Every v1 requirement must map to exactly one ph
 | WORK-01 | Phase 1 | Complete |
 | WORK-02 | Phase 1 | Complete |
 | WORK-03 | Phase 1 | Complete |
-| WORK-04 | Phase 1 | Pending |
+| WORK-04 | Phase 1 | Complete |
 | CRAW-01 | Phase 2 | Pending |
 | CRAW-02 | Phase 2 | Pending |
 | CRAW-03 | Phase 2 | Pending |
@@ -180,8 +180,8 @@ Updated during roadmap creation. Every v1 requirement must map to exactly one ph
 | CRAW-09 | Phase 2 | Pending |
 | CRAW-10 | Phase 2 | Pending |
 | CRAW-11 | Phase 2 | Pending |
-| STYL-01 | Phase 1 | Pending |
-| STYL-02 | Phase 1 | Pending |
+| STYL-01 | Phase 1 | Complete |
+| STYL-02 | Phase 1 | Complete |
 | GLOS-01 | Phase 3 | Pending |
 | GLOS-02 | Phase 3 | Pending |
 | GLOS-03 | Phase 3 | Pending |
