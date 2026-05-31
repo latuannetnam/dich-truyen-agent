@@ -203,6 +203,12 @@ Updated during roadmap creation. Every v1 requirement must map to exactly one ph
 | EXPT-03 | Phase 6 | Pending |
 | EXPT-04 | Phase 6 | Pending |
 | EXPT-05 | Phase 6 | Pending |
+| TRAN-08 | Future | Deferred |
+| QUAL-06 | Future | Deferred |
+| STYL-03 | Future | Deferred |
+| CRAW-12 | Future | Deferred |
+| ADPT-01 | Future | Deferred |
+| ADPT-02 | Future | Deferred |
 
 **Coverage:**
 
@@ -212,4 +218,4 @@ Updated during roadmap creation. Every v1 requirement must map to exactly one ph
 
 ---
 *Requirements defined: 2026-05-31*
-*Last updated: 2026-05-31 after roadmap creation*
+*Last updated: 2026-05-31 after Phase 1 completion*
