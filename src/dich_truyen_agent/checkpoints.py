@@ -3,6 +3,8 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from pathlib import Path
 
+import yaml
+
 from dich_truyen_agent.models import (
     CheckpointRecord,
     CheckpointType,
@@ -71,7 +73,7 @@ def check_gate(
             evidence = validate_workspace_relative_path(workspace_root, relative_path)
             if not evidence.is_file() or sha256_file(evidence) != expected_hash:
                 raise ValueError(f"stale evidence: {relative_path}")
-    except (OSError, ValueError) as error:
+    except (OSError, ValueError, yaml.YAMLError) as error:
         return OperationResult(
             status=OperationStatus.BLOCKED,
             reason=f"stale or invalid {checkpoint_type.value} checkpoint: {error}",

@@ -88,3 +88,11 @@ def test_approval_rejects_workspace_escape(workspace_root: Path) -> None:
             "../outside.yaml",
             ["../outside.txt"],
         )
+
+
+def test_gate_blocks_malformed_checkpoint_yaml(workspace_root: Path) -> None:
+    approval = workspace_root / "checkpoints" / "crawl-approved.yaml"
+    approval.write_text("not: valid: yaml", encoding="utf-8")
+    result = check_gate(workspace_root, CheckpointType.CRAWL_APPROVED)
+    assert result.status is OperationStatus.BLOCKED
+    assert "stale or invalid" in result.reason
