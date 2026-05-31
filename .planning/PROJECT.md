@@ -28,6 +28,8 @@ checkpoints while keeping each agent task small, inspectable, and recoverable.
 - [ ] Provide Codex skills for the separate crawl, translate, quality-check, and export steps.
 - [ ] Crawl a new book from a URL using deterministic helpers, with agent-assisted extraction
       rule repair when a website is not handled correctly.
+- [ ] Run crawl helpers as resumable batches until a book is complete or intervention is
+      required, returning compact status metadata and report paths instead of chapter bodies.
 - [ ] Persist new-book metadata, chapter status, raw text, translations, glossary, crawl rules,
       QA reports, and exports in a resumable filesystem workspace.
 - [ ] Require a user checkpoint after crawl so raw chapter data can be reviewed before
@@ -41,7 +43,8 @@ checkpoints while keeping each agent task small, inspectable, and recoverable.
 - [ ] Support custom YAML translation styles and ship a default `tien_hiep` template.
 - [ ] Generate a deterministic QA report covering structural and glossary consistency issues,
       then require user review before export.
-- [ ] Export EPUB directly and optionally convert it to AZW3, MOBI, or PDF through Calibre.
+- [ ] Export a validated EPUB 3.3 ebook directly and convert it to AZW3, MOBI, or PDF through
+      Calibre.
 
 ### Out of Scope
 
@@ -96,11 +99,15 @@ The v1 user flow is deliberately checkpointed:
   retries stop the run rather than allowing lower-quality downstream translations.
 - **Crawling**: Prefer HTTP for static HTML and use Playwright as a JavaScript-rendering
   fallback - CAPTCHA or authentication requirements stop the workflow for user action.
+- **Token efficiency**: Crawl helpers run autonomously until completion or an unrecoverable
+  condition - the agent receives compact result metadata and report paths, not raw chapter
+  bodies or verbose logs.
 - **Crawl rules**: Reuse validated domain profiles and allow per-book overrides - a failed
   validation must not silently produce incomplete raw data.
 - **Styles**: Translation behavior is configured by YAML - ship `tien_hiep` as the default
   template and allow custom styles without code changes.
-- **Export**: EPUB is the canonical output - AZW3, MOBI, and PDF are Calibre conversions.
+- **Export**: A validated EPUB 3.3 ebook is the canonical output - EPUBCheck is mandatory before
+  AZW3, MOBI, and PDF Calibre conversions.
 - **Compatibility**: Existing old-application book data is not a v1 input - optimize the new
   schema for the agent-native workflow.
 
@@ -113,12 +120,13 @@ The v1 user flow is deliberately checkpointed:
 | Support Codex first with portable contracts | Delivers one reliable runtime before adding adapters | - Pending |
 | Use separate user checkpoints after crawl and QA | Raw extraction and translation quality should be reviewable before expensive or irreversible downstream steps | - Pending |
 | Use HTTP crawl helpers with Playwright fallback | Static sites stay lightweight while JavaScript-rendered sites remain possible | - Pending |
+| Run crawl helpers autonomously and report compact results | Avoid spending agent tokens on routine per-chapter progress while preserving logs for diagnosis | - Pending |
 | Store reusable domain crawl profiles plus per-book overrides | Reuse known extraction rules without allowing one unusual book to affect every book on a domain | - Pending |
 | Translate one chapter per isolated subagent, strictly sequentially | Previous translated output is needed for continuity, pronouns, and terminology | - Pending |
 | Generate glossary automatically and merge new terms after each chapter | Later chapters immediately benefit from newly discovered names and terms | - Pending |
 | Retry translation failures and then stop | Continuing after a missing chapter would weaken context for all later chapters | - Pending |
 | Generate a QA report without automatic fixes | User review is safer for literary translation than silent content rewrites | - Pending |
-| Generate EPUB first and convert other formats with Calibre | Reuses a proven export flow and keeps EPUB as the canonical artifact | - Pending |
+| Generate validated EPUB 3.3 first and convert other formats with Calibre | Reuses a proven export flow while replacing the old EPUB 2-style output with a conformant canonical artifact | - Pending |
 
 ## Evolution
 
