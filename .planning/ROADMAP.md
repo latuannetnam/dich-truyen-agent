@@ -82,11 +82,17 @@ compact reporting, and an explicit raw-content approval gate.
 
 Plans:
 
+**Wave 1**
+
 - [ ] 02-01: Implement profile schema, HTTP extraction, encoding handling, and representative
       crawl fixtures.
 
+**Wave 2** *(blocked on Wave 1 completion)*
+
 - [ ] 02-02: Add resumable batch crawl, retries, Playwright fallback, compact results, and
       intervention detection.
+
+**Wave 3** *(blocked on Wave 2 completion)*
 
 - [ ] 02-03: Add crawl validation report, book-local profile repair flow, `$crawl-book`, and raw
       approval checkpoint.
