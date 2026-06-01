@@ -223,3 +223,6 @@ __marimo__/
 .claude/settings.local.json
 .codex/config.toml
 
+
+#Books related
+books/*

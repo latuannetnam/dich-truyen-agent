@@ -36,6 +36,16 @@ def atomic_write_yaml(path: Path, model: ModelT) -> None:
     os.replace(temp_path, path)
 
 
+def atomic_write_text(path: Path, text: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temp_path = temp_sibling_path(path)
+    with temp_path.open("w", encoding="utf-8", newline="\n") as stream:
+        stream.write(text)
+        stream.flush()
+        os.fsync(stream.fileno())
+    os.replace(temp_path, path)
+
+
 def sha256_file(path: Path) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as stream:

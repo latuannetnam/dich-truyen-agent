@@ -14,10 +14,12 @@ class WorkspacePaths:
     chapters: Path
     state: Path
     style: Path
+    crawl_profile: Path
     raw: Path
     translations: Path
     staging: Path
     reports: Path
+    crawl_report: Path
     results: Path
     checkpoints: Path
     exports: Path
@@ -80,10 +82,12 @@ def workspace_paths(books_root: Path, book_slug: str) -> WorkspacePaths:
         chapters=root / "chapters.yaml",
         state=root / "state.yaml",
         style=root / "style.yaml",
+        crawl_profile=root / "crawl-profile.yaml",
         raw=root / "raw",
         translations=root / "translations",
         staging=root / "staging",
         reports=reports,
+        crawl_report=reports / "crawl.yaml",
         results=reports / "results",
         checkpoints=root / "checkpoints",
         exports=root / "exports",

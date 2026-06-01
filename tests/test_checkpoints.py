@@ -2,8 +2,9 @@ from pathlib import Path
 
 import pytest
 
-from dich_truyen_agent.checkpoints import approve_checkpoint, check_gate
+from dich_truyen_agent.checkpoints import approve_checkpoint, check_gate, require_checkpoint_scope
 from dich_truyen_agent.models import (
+    ApprovalScope,
     BookMetadata,
     ChapterCatalog,
     CheckpointRecord,
@@ -96,3 +97,36 @@ def test_gate_blocks_malformed_checkpoint_yaml(workspace_root: Path) -> None:
     result = check_gate(workspace_root, CheckpointType.CRAWL_APPROVED)
     assert result.status is OperationStatus.BLOCKED
     assert "stale or invalid" in result.reason
+
+
+def test_checkpoint_scope_verification(workspace_root: Path) -> None:
+    report = workspace_root / "reports" / "crawl.yaml"
+    evidence = workspace_root / "raw" / "0001.txt"
+    report.write_text("review", encoding="utf-8")
+    evidence.write_text("body", encoding="utf-8")
+
+    # 1. Partial scope checkpoint
+    approve_checkpoint(
+        workspace_root,
+        CheckpointType.CRAWL_APPROVED,
+        "reports/crawl.yaml",
+        ["raw/0001.txt"],
+        scope=ApprovalScope.PARTIAL,
+    )
+
+    # Partial scope requirement is allowed
+    assert require_checkpoint_scope(workspace_root, CheckpointType.CRAWL_APPROVED, ApprovalScope.PARTIAL).status is OperationStatus.OK
+    # Full scope requirement is blocked on partial checkpoint
+    assert require_checkpoint_scope(workspace_root, CheckpointType.CRAWL_APPROVED, ApprovalScope.FULL).status is OperationStatus.BLOCKED
+
+    # 2. Full scope checkpoint
+    approve_checkpoint(
+        workspace_root,
+        CheckpointType.CRAWL_APPROVED,
+        "reports/crawl.yaml",
+        ["raw/0001.txt"],
+        scope=ApprovalScope.FULL,
+    )
+
+    # Full scope requirement is allowed on full checkpoint
+    assert require_checkpoint_scope(workspace_root, CheckpointType.CRAWL_APPROVED, ApprovalScope.FULL).status is OperationStatus.OK

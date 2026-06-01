@@ -1,0 +1,15 @@
+schema_version: 1
+domain: www.piaotia.com
+index:
+  chapter_link_selector: ".centent ul li a"
+  pagination_selector: null
+  list_section_selectors: []
+chapter:
+  title_selector: "h1"
+  content_selector: "body"
+  remove_selectors: ["div", "script", "table", "h1", "center"]
+encoding:
+  index: "gbk"
+  chapter: "gbk"
+validation:
+  min_chapter_characters: 100

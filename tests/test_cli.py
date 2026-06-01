@@ -89,7 +89,6 @@ def test_init_book_resume_uses_workspace_style_snapshot(tmp_path: Path) -> None:
 def test_skill_skeletons_are_honest_phase_one_contracts() -> None:
     skills_root = Path(".codex") / "skills"
     for skill_name in (
-        "crawl-book",
         "translate-book",
         "check-translation",
         "export-book",
@@ -102,3 +101,65 @@ def test_skill_skeletons_are_honest_phase_one_contracts() -> None:
         assert "reports/results/" in text
         assert "checkpoint" in text.lower()
         assert "not implemented by Phase 1" in text
+
+
+def test_cli_help_lists_phase_two_commands(capsys) -> None:
+    parser = build_parser()
+    parser.print_help()
+    output = capsys.readouterr().out
+    for command in (
+        "crawl-book",
+        "validate-crawl-profile",
+        "promote-crawl-profile",
+        "approve-crawl",
+    ):
+        assert command in output
+
+
+def test_cli_validate_crawl_profile(tmp_path: Path) -> None:
+    # Setup dummy workspace
+    workspace = tmp_path / "books" / "demo-book"
+    workspace.mkdir(parents=True)
+    (workspace / "reports" / "results").mkdir(parents=True)
+    
+    # Write metadata
+    from dich_truyen_agent.models import BookMetadata
+    from dich_truyen_agent.storage import atomic_write_yaml
+    metadata = BookMetadata(
+        book_slug="demo-book",
+        source_url="https://www.piaotia.com/html/8/8717/index.html",
+        title="Demo Book",
+    )
+    atomic_write_yaml(workspace / "book.yaml", metadata)
+    
+    # Write crawl profile
+    profile_path = tmp_path / "profile.yaml"
+    profile_path.write_text(
+        "schema_version: 1\n"
+        "domain: www.piaotia.com\n"
+        "index:\n"
+        "  chapter_link_selector: '.chapters a'\n"
+        "  pagination_selector: null\n"
+        "  list_section_selectors: []\n"
+        "chapter:\n"
+        "  title_selector: h1\n"
+        "  content_selector: '#content'\n"
+        "  remove_selectors: []\n"
+        "encoding:\n"
+        "  index: gbk\n"
+        "  chapter: gbk\n"
+        "validation:\n"
+        "  min_chapter_characters: 10\n",
+        encoding="utf-8"
+    )
+    
+    args = build_parser().parse_args([
+        "validate-crawl-profile",
+        "--workspace",
+        str(workspace),
+        "--profile",
+        str(profile_path),
+    ])
+    res = run_command(args)
+    assert res.status is OperationStatus.OK
+    assert "is valid" in res.reason

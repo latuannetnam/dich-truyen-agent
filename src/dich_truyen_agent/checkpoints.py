@@ -6,12 +6,13 @@ from pathlib import Path
 import yaml
 
 from dich_truyen_agent.models import (
+    ApprovalScope,
     CheckpointRecord,
     CheckpointType,
     OperationResult,
     OperationStatus,
 )
-from dich_truyen_agent.paths import validate_workspace_relative_path
+from dich_truyen_agent.paths import validate_workspace_relative_path, workspace_paths
 from dich_truyen_agent.storage import atomic_write_yaml, load_yaml_model, sha256_file
 
 
@@ -24,6 +25,7 @@ def approve_checkpoint(
     checkpoint_type: CheckpointType,
     report_path: str,
     evidence_paths: list[str],
+    scope: ApprovalScope = ApprovalScope.FULL,
     approved_at: datetime | None = None,
 ) -> OperationResult:
     workspace_root = workspace_root.resolve()
@@ -42,6 +44,7 @@ def approve_checkpoint(
         approved_at=approved_at or datetime.now(UTC),
         report_path=_relative(report, workspace_root),
         evidence_hashes=evidence_hashes,
+        scope=scope,
     )
     atomic_write_yaml(approval_path, record)
     return OperationResult(
@@ -50,6 +53,28 @@ def approve_checkpoint(
         report_paths=[record.report_path],
         approval_path=_relative(approval_path, workspace_root),
     )
+
+
+def require_checkpoint_scope(
+    workspace_root: Path,
+    checkpoint_type: CheckpointType,
+    required_scope: ApprovalScope,
+) -> OperationResult:
+    res = check_gate(workspace_root, checkpoint_type)
+    if res.status is not OperationStatus.OK:
+        return res
+    
+    paths = workspace_paths(workspace_root.parent, workspace_root.name)
+    approval_path = paths.checkpoint(checkpoint_type.value)
+    record = load_yaml_model(approval_path, CheckpointRecord)
+    
+    if required_scope == ApprovalScope.FULL and record.scope == ApprovalScope.PARTIAL:
+        return OperationResult(
+            status=OperationStatus.BLOCKED,
+            reason=f"checkpoint {checkpoint_type.value} scope is partial, but full scope is required",
+            approval_path=_relative(approval_path, workspace_root),
+        )
+    return res
 
 
 def check_gate(

@@ -153,3 +153,17 @@ def resume_workspace(books_root: Path, book_slug: str) -> OperationResult:
             reason=f"workspace does not exist: {paths.root}",
         )
     return inspect_workspace(paths.root)
+
+
+def install_discovered_catalog(
+    workspace_root: Path,
+    catalog: ChapterCatalog,
+) -> None:
+    paths = workspace_paths(workspace_root.parent, workspace_root.name)
+    if not paths.chapters.exists():
+        atomic_write_yaml(paths.chapters, catalog)
+    if not paths.state.exists():
+        state = BookState(
+            chapters=[ChapterState(chapter_id=chapter.chapter_id) for chapter in catalog.chapters]
+        )
+        atomic_write_yaml(paths.state, state)

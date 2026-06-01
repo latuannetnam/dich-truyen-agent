@@ -5,9 +5,12 @@ from pathlib import Path
 
 from dich_truyen_agent.checkpoints import approve_checkpoint, check_gate
 from dich_truyen_agent.models import (
+    ApprovalScope,
     BookMetadata,
+    BookState,
     ChapterCatalog,
     CheckpointType,
+    CrawlSettings,
     OperationResult,
     OperationStatus,
 )
@@ -52,6 +55,27 @@ def build_parser() -> argparse.ArgumentParser:
     validate = subparsers.add_parser("validate-style")
     validate.add_argument("--style", type=Path, required=True)
     validate.add_argument("--workspace", type=Path)
+
+    # Phase 2 Crawl Commands
+    crawl = subparsers.add_parser("crawl-book")
+    crawl.add_argument("--books-root", type=Path, default=Path("books"))
+    crawl.add_argument("--slug", required=True)
+    crawl.add_argument("--source-url", required=True)
+    crawl.add_argument("--style")
+    crawl.add_argument("--max-chapters", type=int, default=0)
+    crawl.add_argument("--chapter-delay-seconds", type=float, default=3.0)
+
+    val_prof = subparsers.add_parser("validate-crawl-profile")
+    val_prof.add_argument("--workspace", type=Path, required=True)
+    val_prof.add_argument("--profile", type=Path, required=True)
+
+    prom_prof = subparsers.add_parser("promote-crawl-profile")
+    prom_prof.add_argument("--workspace", type=Path, required=True)
+
+    app_crawl = subparsers.add_parser("approve-crawl")
+    app_crawl.add_argument("--workspace", type=Path, required=True)
+    app_crawl.add_argument("--max-chapters", type=int, default=0)
+
     return parser
 
 
@@ -99,6 +123,107 @@ def run_command(args: argparse.Namespace) -> OperationResult:
             reason=f"style is valid: {style.name}",
             report_paths=[str(args.style)],
         )
+    elif args.command == "crawl-book":
+        import asyncio
+        from dich_truyen_agent.crawl_batch import crawl_book
+        
+        result = asyncio.run(
+            crawl_book(
+                books_root=args.books_root,
+                book_slug=args.slug,
+                source_url=args.source_url,
+                project_root=PROJECT_ROOT,
+                style_name=args.style,
+                max_chapters=args.max_chapters,
+                chapter_delay_seconds=args.chapter_delay_seconds,
+            )
+        )
+        workspace_root = workspace_paths(args.books_root, args.slug).root
+    elif args.command == "validate-crawl-profile":
+        from dich_truyen_agent.crawl_profiles import load_crawl_profile, _source_host, _require_matching_domain
+        from dich_truyen_agent.storage import load_yaml_model
+        
+        try:
+            profile = load_crawl_profile(args.profile)
+            paths = workspace_paths(args.workspace.parent, args.workspace.name)
+            metadata = load_yaml_model(paths.book, BookMetadata)
+            domain = _source_host(metadata.source_url)
+            _require_matching_domain(profile, domain)
+            result = OperationResult(
+                status=OperationStatus.OK,
+                reason="crawl profile is valid and domain matches book source domain",
+                report_paths=[str(args.profile)],
+            )
+        except Exception as e:
+            result = OperationResult(
+                status=OperationStatus.ERROR,
+                reason=f"crawl profile validation failed: {e}",
+            )
+    elif args.command == "promote-crawl-profile":
+        from dich_truyen_agent.crawl_profiles import promote_local_crawl_profile
+        try:
+            shared_path = promote_local_crawl_profile(PROJECT_ROOT, args.workspace)
+            result = OperationResult(
+                status=OperationStatus.OK,
+                reason=f"local override crawl profile promoted to shared domain profile: {shared_path.name}",
+                report_paths=[str(shared_path)],
+            )
+        except Exception as e:
+            result = OperationResult(
+                status=OperationStatus.ERROR,
+                reason=f"crawl profile promotion failed: {e}",
+            )
+    elif args.command == "approve-crawl":
+        from dich_truyen_agent.storage import load_yaml_model
+        from dich_truyen_agent.crawl_profiles import load_active_crawl_profile
+        from dich_truyen_agent.crawl_reports import build_crawl_report, approval_blockers
+        from dich_truyen_agent.checkpoints import approve_checkpoint
+        
+        try:
+            paths = workspace_paths(args.workspace.parent, args.workspace.name)
+            metadata = load_yaml_model(paths.book, BookMetadata)
+            profile_source = load_active_crawl_profile(PROJECT_ROOT, args.workspace, metadata.source_url)
+            
+            settings = CrawlSettings(max_chapters=args.max_chapters)
+            report = build_crawl_report(args.workspace, profile_source.profile, settings)
+            
+            blockers = approval_blockers(report)
+            if blockers:
+                result = OperationResult(
+                    status=OperationStatus.BLOCKED,
+                    reason=f"crawl approval blocked due to findings: {blockers}",
+                    report_paths=[str(paths.crawl_report)],
+                )
+            else:
+                # Save the crawl report
+                atomic_write_yaml(paths.crawl_report, report)
+                
+                # Evidence hashing
+                catalog = load_yaml_model(paths.chapters, ChapterCatalog)
+                state = load_yaml_model(paths.state, BookState)
+                target_chapters = catalog.chapters
+                if args.max_chapters > 0:
+                    target_chapters = catalog.chapters[:args.max_chapters]
+                    
+                evidence = ["reports/crawl.yaml"]
+                state_by_id = {ch.chapter_id: ch for ch in state.chapters}
+                for tc in target_chapters:
+                    c_state = state_by_id.get(tc.chapter_id)
+                    if c_state and c_state.raw.canonical_path:
+                        evidence.append(c_state.raw.canonical_path)
+                
+                result = approve_checkpoint(
+                    workspace_root=args.workspace,
+                    checkpoint_type=CheckpointType.CRAWL_APPROVED,
+                    report_path="reports/crawl.yaml",
+                    evidence_paths=evidence,
+                    scope=report.scope,
+                )
+        except Exception as e:
+            result = OperationResult(
+                status=OperationStatus.ERROR,
+                reason=f"crawl approval failed: {e}",
+            )
     else:
         raise ValueError(f"unsupported command: {args.command}")
     _persist_result(workspace_root, args.command, result)

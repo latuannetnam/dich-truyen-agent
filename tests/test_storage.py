@@ -12,6 +12,7 @@ from dich_truyen_agent.paths import (
     validate_workspace_relative_path,
 )
 from dich_truyen_agent.storage import (
+    atomic_write_text,
     atomic_write_yaml,
     find_orphan_temp_files,
     load_yaml_model,
@@ -72,3 +73,10 @@ def test_orphan_temp_is_reported_without_changing_canonical(tmp_path: Path) -> N
     assert find_orphan_temp_files(tmp_path) == [orphan]
     assert orphan.exists()
     assert path.read_bytes() == original
+
+
+def test_atomic_write_text(tmp_path: Path) -> None:
+    path = tmp_path / "hello.txt"
+    content = "Hello, world!\nLine 2\n"
+    atomic_write_text(path, content)
+    assert path.read_text(encoding="utf-8") == content
