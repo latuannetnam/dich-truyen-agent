@@ -178,7 +178,61 @@ Use these entry points:
 Do not make direct repo edits outside a GSD workflow unless the user explicitly asks to bypass it.
 <!-- GSD:workflow-end -->
 
+## Workspace Initialization and CLI Conventions
+
+When asked to set up, initialize, crawl, translate, inspect, QA, or export novel workspaces, **DO NOT** manually parse Python files or construct ad-hoc filesystem layouts. Downstream agents must systematically trigger the compiled, deterministic Python CLI helper scripts as follows:
+
+- **Workspace Setup & Initialization:**
+  Always initialize a clean book directory and build Pydantic schemas (`book.yaml`, `chapters.yaml`, `state.yaml`, `style.yaml`) by running:
+  ```powershell
+  uv run python -m dich_truyen_agent.cli init-book --slug <book-slug> --title "<title>" --source-url "<source-url>" [--author "<author>"]
+  ```
+
+- **Gate Checkpoint Verifications:**
+  Downstream phases are strictly gated. Always verify checkpoint validity:
+  ```powershell
+  uv run python -m dich_truyen_agent.cli check-gate --workspace books/<book-slug> --type <crawl-approved|qa-approved>
+  ```
+
+- **Batch Crawling & Crawl Gate Approvals:**
+  Run the batch downloader and create a cryptographically secure, evidence-hashed crawl checkpoint:
+  ```powershell
+  uv run python -m dich_truyen_agent.cli crawl-book --slug <book-slug> --source-url "<source-url>"
+  uv run python -m dich_truyen_agent.cli approve-crawl --workspace books/<book-slug>
+  ```
+
+- **Glossary Lifecycle Operations:**
+  Generate initial vocabularies and lock crucial manual terms:
+  ```powershell
+  uv run python -m dich_truyen_agent.cli generate-glossary --slug <book-slug> --chapters <comma-separated-ids>
+  uv run python -m dich_truyen_agent.cli lock-term --workspace books/<book-slug> --term "<chinese-term>"
+  ```
+
+- **Sequential Translation context & Handoff:**
+  Query progress, fetch isolated chapter contexts, and atomically promote staged translations (which also merges glossaries and hashes files):
+  ```powershell
+  uv run python -m dich_truyen_agent.cli show-translation-progress --workspace books/<book-slug>
+  uv run python -m dich_truyen_agent.cli prepare-translation-context --workspace books/<book-slug> --chapter-id <chapter_id>
+  uv run python -m dich_truyen_agent.cli promote-chapter --workspace books/<book-slug> --chapter-id <chapter_id>
+  ```
+
+- **Quality Assurance & QA Gate Approvals:**
+  Perform deterministic quality scans (residue, structure, length, conflicts) and generate the `qa-approved` checkpoint:
+  ```powershell
+  uv run python -m dich_truyen_agent.cli check-translation --workspace books/<book-slug>
+  uv run python -m dich_truyen_agent.cli approve-qa --workspace books/<book-slug>
+  ```
+
+- **Ebook and Derivative Export:**
+  Validate checkpoints, run EPUBCheck, and generate Calibre derivative formats:
+  ```powershell
+  uv run python -m dich_truyen_agent.cli export-book --workspace books/<book-slug> --formats <epub,azw3,mobi,pdf>
+  ```
+
+---
+
 ## Windows Sandbox ACL Troubleshooting
+
 
 When running pytest inside an Antigravity Windows sandbox, use:
 
