@@ -1,6 +1,6 @@
 # Stack Research
 
-**Domain:** Codex-first agent-native Chinese-to-Vietnamese novel translation workflow
+**Domain:** Antigravity-first agent-native Chinese-to-Vietnamese novel translation workflow
 **Researched:** 2026-05-31
 **Confidence:** HIGH
 
@@ -12,7 +12,7 @@
 |------------|---------|---------|-----------------|
 | Python | 3.13.13 | Deterministic helper scripts and package code | The repository already targets Python 3.13. Python 3.14.5 is current, but staying on the latest 3.13 patch reduces compatibility risk while preserving a modern runtime. |
 | uv | Current installed tool | Dependency locking and command execution | The repository already uses `pyproject.toml`, `.python-version`, and `uv.lock`. Keep standard dependency declarations and use `uv add` / `uv run`. |
-| Codex skills | Project-local Markdown skills | User-facing orchestration | The product is operated through `$crawl-book`, `$translate-book`, `$check-translation`, and `$export-book`, with helpers beneath the skills. |
+| Antigravity skills | Project-local Markdown skills | User-facing orchestration | The product is operated through `$crawl-book`, `$translate-book`, `$check-translation`, and `$export-book`, with helpers beneath the skills. |
 | Standard library `zipfile` | Python 3.13 | EPUB 3.3 packaging | Direct assembly is deterministic and avoids making Calibre mandatory for canonical EPUB output. |
 | Calibre `ebook-convert` | 9.9.x compatible CLI | Optional format conversion | Use only after canonical EPUB generation to produce AZW3, MOBI, or PDF. |
 
@@ -97,7 +97,7 @@ uv run playwright install chromium
 
 | Avoid | Why | Use Instead |
 |-------|-----|-------------|
-| Direct OpenAI API calls for translation | This recreates the old application rather than using coding-agent-native workers. | Codex skill orchestration and context-isolated translation workers. |
+| Direct OpenAI API calls for translation | This recreates the old application rather than using coding-agent-native workers. | Antigravity skill orchestration and context-isolated translation workers. |
 | HTTPX `1.0.dev*` prereleases | They are prereleases and add unnecessary migration risk. | Stable `httpx` 0.28.1 range. |
 | Playwright as the default crawler | Browser startup is slower and makes simple static sites harder to debug. | HTTP first, browser fallback after validation failure. |
 | EPUB 2-only NCX output | EPUB 3.3 requires an EPUB navigation document; NCX is legacy. | EPUB 3.3 package with XHTML nav and optional compatibility NCX only if needed. |
@@ -134,5 +134,5 @@ uv run playwright install chromium
 - https://manual.calibre-ebook.com/generated/en/ebook-convert.html - Calibre conversion CLI
 
 ---
-*Stack research for: Codex-first agent-native novel translation workflow*
+*Stack research for: Antigravity-first agent-native novel translation workflow*
 *Researched: 2026-05-31*

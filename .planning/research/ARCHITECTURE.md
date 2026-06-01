@@ -1,6 +1,6 @@
 # Architecture Research
 
-**Domain:** Codex-first agent-native Chinese-to-Vietnamese novel translation workflow
+**Domain:** Antigravity-first agent-native Chinese-to-Vietnamese novel translation workflow
 **Researched:** 2026-05-31
 **Confidence:** HIGH
 
@@ -12,7 +12,7 @@
 User
   |
   v
-Project-local Codex skills
+Project-local Antigravity skills
   |-- $crawl-book
   |-- $translate-book
   |-- $check-translation
@@ -52,7 +52,7 @@ unvalidated worker file as complete.
 
 | Component | Responsibility | Typical Implementation |
 |-----------|----------------|------------------------|
-| Codex skills | Guide the user through one workflow step and invoke helpers | Project-local `SKILL.md` files with concise protocols |
+| Antigravity skills | Guide the user through one workflow step and invoke helpers | Project-local `SKILL.md` files with concise protocols |
 | Workspace models | Define metadata, immutable chapter catalog, chapter state, checkpoints, and reports | Pydantic models serialized to JSON |
 | State store | Persist resumable status atomically | One JSON state file per chapter plus atomic temp-file replacement |
 | Fetcher | Retrieve HTML with retries, encoding detection, and transport selection | HTTPX first; Playwright Chromium fallback |
@@ -66,7 +66,7 @@ unvalidated worker file as complete.
 ## Recommended Project Structure
 
 ```text
-.codex/
+.agent/
 `-- skills/
     |-- crawl-book/SKILL.md
     |-- translate-book/SKILL.md
@@ -284,7 +284,7 @@ as `dcterms:modified`; NCX alone is legacy.
 | Service | Integration Pattern | Notes |
 |---------|---------------------|-------|
 | Target novel websites | HTTPX requests, optional Chromium render | Respect delay and stop on CAPTCHA/login |
-| Codex native worker capability | Skill-level dispatch with path-only protocol | Runtime adapter owns spawn syntax |
+| Antigravity native worker capability | Skill-level dispatch with path-only protocol | Runtime adapter owns spawn syntax |
 | EPUBCheck | Optional subprocess after assembly | Official conformance checker |
 | Calibre `ebook-convert` | Subprocess from canonical EPUB | Required only for AZW3/MOBI/PDF |
 
@@ -307,5 +307,5 @@ as `dcterms:modified`; NCX alone is legacy.
 - https://playwright.dev/python/docs/intro - Playwright as general-purpose browser automation
 
 ---
-*Architecture research for: Codex-first agent-native novel translation workflow*
+*Architecture research for: Antigravity-first agent-native novel translation workflow*
 *Researched: 2026-05-31*

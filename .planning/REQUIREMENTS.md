@@ -10,7 +10,7 @@ Requirements for the initial release. Each requirement maps to one roadmap phase
 
 ### Skills and Workspace
 
-- [ ] **SKIL-01**: User can run separate project-local Codex skills for crawl, translate,
+- [ ] **SKIL-01**: User can run separate project-local Antigravity skills for crawl, translate,
       quality check, and export.
 
 - [x] **WORK-01**: User can initialize a clean filesystem workspace for a new book without
@@ -142,7 +142,7 @@ Deferred to a future release. These are tracked but not included in the current 
 
 ### Runtime Adapters
 
-- **ADPT-01**: User can run equivalent workflows through an Antigravity adapter.
+- **ADPT-01**: User can run equivalent workflows through a Codex adapter.
 - **ADPT-02**: User can run equivalent workflows through a Claude Code adapter.
 
 ## Out of Scope
@@ -152,7 +152,7 @@ Explicitly excluded from v1 to prevent scope creep.
 | Feature | Reason |
 |---------|--------|
 | Legacy workspace migration | v1 optimizes a cleaner schema for new books |
-| Web UI, REST API, or WebSocket monitoring | v1 is operated through Codex skills |
+| Web UI, REST API, or WebSocket monitoring | v1 is operated through Antigravity skills |
 | Adjacent-chapter translation concurrency | strict sequential context is prioritized for translation quality |
 | Automatic QA content corrections | literary changes require user review |
 | CAPTCHA bypass, login automation, or advanced anti-bot evasion | crawler stops and requests user intervention |

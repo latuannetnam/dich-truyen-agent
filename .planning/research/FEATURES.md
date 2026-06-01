@@ -1,6 +1,6 @@
 # Feature Research
 
-**Domain:** Codex-first agent-native Chinese-to-Vietnamese novel translation workflow
+**Domain:** Antigravity-first agent-native Chinese-to-Vietnamese novel translation workflow
 **Researched:** 2026-05-31
 **Confidence:** HIGH
 
@@ -14,7 +14,7 @@ behaviors while removing UI/API scope and direct LLM-client translation.
 
 | Feature | Why Expected | Complexity | Notes |
 |---------|--------------|------------|-------|
-| Project-local Codex skills | Skills are the v1 user interface | MEDIUM | Separate crawl, translate, QA, and export entry points. |
+| Project-local Antigravity skills | Skills are the v1 user interface | MEDIUM | Separate crawl, translate, QA, and export entry points. |
 | New-book workspace initialization | Every downstream step needs stable paths and schemas | MEDIUM | Do not inherit the old mutable monolithic schema. |
 | Resumable per-chapter state | Novel translation runs are long and interruption is normal | MEDIUM | Persist after every crawl and translation promotion. |
 | HTTP crawl with browser fallback | Static and JavaScript-rendered sites both occur | HIGH | Stop on CAPTCHA or login requirements. |
@@ -63,7 +63,7 @@ behaviors while removing UI/API scope and direct LLM-client translation.
                                 -> [EPUB 3.3 export]
                                     -> [Calibre conversion]
 
-[Codex skills] -> orchestrate every step above
+[Antigravity skills] -> orchestrate every step above
 [Domain profiles] -> enhance [Crawl helpers]
 [Per-book overrides] -> repair [Crawl validation] failures
 ```
@@ -84,7 +84,7 @@ behaviors while removing UI/API scope and direct LLM-client translation.
 
 ### Launch With (v1)
 
-- [ ] Four Codex skills: crawl, translate, QA, export.
+- [ ] Four Antigravity skills: crawl, translate, QA, export.
 - [ ] New workspace schema with atomic per-chapter state.
 - [ ] HTTP crawler, Chromium fallback, domain profiles, and per-book overrides.
 - [ ] Raw-review checkpoint and crawl validation report.
@@ -104,7 +104,7 @@ behaviors while removing UI/API scope and direct LLM-client translation.
 
 ### Future Consideration (v2+)
 
-- [ ] Antigravity adapter.
+- [ ] Codex adapter.
 - [ ] Claude Code adapter.
 - [ ] Legacy workspace migration.
 - [ ] UI or API shell.
@@ -133,5 +133,5 @@ behaviors while removing UI/API scope and direct LLM-client translation.
 - https://www.w3.org/TR/epub-33/ - EPUB 3.3 navigation and packaging expectations
 
 ---
-*Feature research for: Codex-first agent-native novel translation workflow*
+*Feature research for: Antigravity-first agent-native novel translation workflow*
 *Researched: 2026-05-31*

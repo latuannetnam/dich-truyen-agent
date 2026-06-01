@@ -87,7 +87,7 @@ def test_init_book_resume_uses_workspace_style_snapshot(tmp_path: Path) -> None:
 
 
 def test_skill_skeletons_are_honest_phase_one_contracts() -> None:
-    skills_root = Path(".codex") / "skills"
+    skills_root = Path(".agent") / "skills"
     for skill_name in (
         "translate-book",
         "check-translation",

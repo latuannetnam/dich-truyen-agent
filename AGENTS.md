@@ -4,14 +4,14 @@
 
 **Dich Truyen Agent**
 
-Dich Truyen Agent is a Codex-first, agent-native workflow for crawling Chinese novels,
+Dich Truyen Agent is an Antigravity-first, agent-native workflow for crawling Chinese novels,
 translating them into Vietnamese, checking translation quality, and exporting ebooks. It
 rebuilds the useful behavior of the existing `D:\latuan\Programming\dich-truyen-tien-hiep`
 application around coding-agent skills and small deterministic Python helpers instead of a
 long-running application UI or API.
 
-The primary user is the repository owner operating the workflow interactively through Codex.
-The design keeps file contracts and helper scripts portable so adapters for Antigravity or
+The primary user is the repository owner operating the workflow interactively through Antigravity.
+The design keeps file contracts and helper scripts portable so adapters for Codex or
 Claude Code can be added later.
 
 **Core Value:** Produce resumable, high-quality Vietnamese novel translations through explicit review
@@ -19,10 +19,10 @@ checkpoints while keeping each agent task small, inspectable, and recoverable.
 
 ### Constraints
 
-- **Runtime**: Codex is the supported v1 agent runtime - file contracts and helpers must avoid
-  unnecessary Codex-specific coupling so adapters can be added later.
+- **Runtime**: Antigravity is the supported v1 agent runtime - file contracts and helpers must avoid
+  unnecessary Antigravity-specific coupling so adapters can be added later.
 
-- **Interface**: User-facing workflows are Codex skills - no UI or API server in v1.
+- **Interface**: User-facing workflows are Antigravity skills - no UI or API server in v1.
 - **Translation quality**: Chapters are translated strictly in order - chapter `N` uses the
   completed Vietnamese output of chapter `N-1` as context.
 
@@ -61,7 +61,7 @@ checkpoints while keeping each agent task small, inspectable, and recoverable.
 |------------|---------|---------|-----------------|
 | Python | 3.13.13 | Deterministic helper scripts and package code | The repository already targets Python 3.13. Python 3.14.5 is current, but staying on the latest 3.13 patch reduces compatibility risk while preserving a modern runtime. |
 | uv | Current installed tool | Dependency locking and command execution | The repository already uses `pyproject.toml`, `.python-version`, and `uv.lock`. Keep standard dependency declarations and use `uv add` / `uv run`. |
-| Codex skills | Project-local Markdown skills | User-facing orchestration | The product is operated through `$crawl-book`, `$translate-book`, `$check-translation`, and `$export-book`, with helpers beneath the skills. |
+| Antigravity skills | Project-local Markdown skills | User-facing orchestration | The product is operated through `$crawl-book`, `$translate-book`, `$check-translation`, and `$export-book`, with helpers beneath the skills. |
 | Standard library `zipfile` | Python 3.13 | EPUB 3.3 packaging | Direct assembly is deterministic and avoids making Calibre mandatory for canonical EPUB output. |
 | Calibre `ebook-convert` | 9.9.x compatible CLI | Optional format conversion | Use only after canonical EPUB generation to produce AZW3, MOBI, or PDF. |
 
@@ -104,7 +104,7 @@ checkpoints while keeping each agent task small, inspectable, and recoverable.
 
 | Avoid | Why | Use Instead |
 |-------|-----|-------------|
-| Direct OpenAI API calls for translation | This recreates the old application rather than using coding-agent-native workers. | Codex skill orchestration and context-isolated translation workers. |
+| Direct OpenAI API calls for translation | This recreates the old application rather than using coding-agent-native workers. | Antigravity skill orchestration and context-isolated translation workers. |
 | HTTPX `1.0.dev*` prereleases | They are prereleases and add unnecessary migration risk. | Stable `httpx` 0.28.1 range. |
 | Playwright as the default crawler | Browser startup is slower and makes simple static sites harder to debug. | HTTP first, browser fallback after validation failure. |
 | EPUB 2-only NCX output | EPUB 3.3 requires an EPUB navigation document; NCX is legacy. | EPUB 3.3 package with XHTML nav and optional compatibility NCX only if needed. |
@@ -160,7 +160,7 @@ Architecture not yet mapped. Follow existing patterns found in the codebase.
 
 ## Project Skills
 
-No project skills found. Add skills to any of: `.claude/skills/`, `.agents/skills/`, `.cursor/skills/`, `.github/skills/`, or `.codex/skills/` with a `SKILL.md` index file.
+No project skills found. Add skills to any of: `.claude/skills/`, `.agents/skills/`, `.cursor/skills/`, `.github/skills/`, `.agent/skills/`, or `.codex/skills/` with a `SKILL.md` index file.
 <!-- GSD:skills-end -->
 
 <!-- GSD:workflow-start source:GSD defaults -->
@@ -180,7 +180,7 @@ Do not make direct repo edits outside a GSD workflow unless the user explicitly 
 
 ## Windows Sandbox ACL Troubleshooting
 
-When running pytest inside a Codex Windows sandbox, use:
+When running pytest inside an Antigravity Windows sandbox, use:
 
 ```powershell
 $env:UV_CACHE_DIR="$PWD\.uv-cache"
@@ -189,7 +189,7 @@ uv run pytest
 
 Do not pass `--basetemp`. Pytest normally creates session directories, `tmp_path` children, and
 cache staging directories with mode `0o700`. On Windows this becomes a protected owner-only
-DACL that drops the inherited Codex workspace capability SID. The restricted sandbox token
+DACL that drops the inherited Antigravity workspace capability SID. The restricted sandbox token
 then receives `WinError 5: Access is denied` when reopening a directory it just created.
 
 This is not primarily a parent-directory ACL problem. Pre-creating writable parents such as

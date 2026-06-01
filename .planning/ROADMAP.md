@@ -84,17 +84,17 @@ Plans:
 
 **Wave 1**
 
-- [ ] 02-01: Implement profile schema, HTTP extraction, encoding handling, and representative
+- [x] 02-01: Implement profile schema, HTTP extraction, encoding handling, and representative
       crawl fixtures.
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 02-02: Add resumable batch crawl, retries, Playwright fallback, compact results, and
+- [x] 02-02: Add resumable batch crawl, retries, Playwright fallback, compact results, and
       intervention detection.
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
-- [ ] 02-03: Add crawl validation report, book-local profile repair flow, `$crawl-book`, and raw
+- [x] 02-03: Add crawl validation report, book-local profile repair flow, `$crawl-book`, and raw
       approval checkpoint.
 
 ### Phase 3: Glossary Lifecycle
@@ -139,7 +139,7 @@ keeping the orchestrator compact and recovery deterministic.
 
 Plans:
 
-- [ ] 04-01: Define and verify native Codex worker protocol, staging validation, and atomic
+- [ ] 04-01: Define and verify native Antigravity worker protocol, staging validation, and atomic
       promotion.
 
 - [ ] 04-02: Implement sequential orchestration, previous-chapter context, retry-stop-resume,
@@ -202,7 +202,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Workspace Contracts and Skill Skeletons | 2/2 | Complete   | 2026-05-31 |
-| 2. Crawl and Raw Review Gate | 0/3 | Not started | - |
+| 2. Crawl and Raw Review Gate | 3/3 | Complete   | 2026-06-01 |
 | 3. Glossary Lifecycle | 0/2 | Not started | - |
 | 4. Sequential Agent-Native Translation | 0/3 | Not started | - |
 | 5. QA Review Gate | 0/2 | Not started | - |

@@ -2,14 +2,14 @@
 
 ## What This Is
 
-Dich Truyen Agent is a Codex-first, agent-native workflow for crawling Chinese novels,
+Dich Truyen Agent is an Antigravity-first, agent-native workflow for crawling Chinese novels,
 translating them into Vietnamese, checking translation quality, and exporting ebooks. It
 rebuilds the useful behavior of the existing `D:\latuan\Programming\dich-truyen-tien-hiep`
 application around coding-agent skills and small deterministic Python helpers instead of a
 long-running application UI or API.
 
-The primary user is the repository owner operating the workflow interactively through Codex.
-The design keeps file contracts and helper scripts portable so adapters for Antigravity or
+The primary user is the repository owner operating the workflow interactively through Antigravity.
+The design keeps file contracts and helper scripts portable so adapters for Codex or
 Claude Code can be added later.
 
 ## Core Value
@@ -27,7 +27,7 @@ checkpoints while keeping each agent task small, inspectable, and recoverable.
 
 ### Active
 
-- [ ] Provide Codex skills for the separate crawl, translate, quality-check, and export steps.
+- [ ] Provide Antigravity skills for the separate crawl, translate, quality-check, and export steps.
 - [ ] Crawl a new book from a URL using deterministic helpers, with agent-assisted extraction
       rule repair when a website is not handled correctly.
 - [ ] Run crawl helpers as resumable batches until a book is complete or intervention is
@@ -51,8 +51,8 @@ checkpoints while keeping each agent task small, inspectable, and recoverable.
 
 - Migrating or reading book workspaces created by the old application - v1 handles new books
   only and may use a cleaner schema.
-- Web UI, REST API, and WebSocket monitoring - v1 is operated through Codex skills.
-- First-class Antigravity or Claude Code adapters - contracts should remain portable, but Codex
+- Web UI, REST API, and WebSocket monitoring - v1 is operated through Antigravity skills.
+- First-class Codex or Claude Code adapters - contracts should remain portable, but Antigravity
   is the only supported runtime in v1.
 - Parallel translation of adjacent chapters - v1 prioritizes continuity and quality through
   strict sequential translation.
@@ -91,9 +91,9 @@ The v1 user flow is deliberately checkpointed:
 
 ## Constraints
 
-- **Runtime**: Codex is the supported v1 agent runtime - file contracts and helpers must avoid
-  unnecessary Codex-specific coupling so adapters can be added later.
-- **Interface**: User-facing workflows are Codex skills - no UI or API server in v1.
+- **Runtime**: Antigravity is the supported v1 agent runtime - file contracts and helpers must avoid
+  unnecessary Antigravity-specific coupling so adapters can be added later.
+- **Interface**: User-facing workflows are Antigravity skills - no UI or API server in v1.
 - **Translation quality**: Chapters are translated strictly in order - chapter `N` uses the
   completed Vietnamese output of chapter `N-1` as context.
 - **Failure handling**: Translation retries default to 3 attempts with backoff - exhausted
@@ -117,8 +117,8 @@ The v1 user flow is deliberately checkpointed:
 | Decision | Rationale | Outcome |
 |----------|-----------|---------|
 | Use a hybrid agent-native architecture | Agents are effective for analysis, translation, and repair; deterministic scripts are safer for metadata, validation, and export | Phase 1 validated the deterministic workspace helper foundation |
-| Operate v1 through Codex skills without UI or API | Keeps the first release focused on the agent-native workflow | - Pending |
-| Support Codex first with portable contracts | Delivers one reliable runtime before adding adapters | - Pending |
+| Operate v1 through Antigravity skills without UI or API | Keeps the first release focused on the agent-native workflow | - Pending |
+| Support Antigravity first with portable contracts | Delivers one reliable runtime before adding adapters | - Pending |
 | Use separate user checkpoints after crawl and QA | Raw extraction and translation quality should be reviewable before expensive or irreversible downstream steps | Phase 1 validated reusable hash-backed checkpoint gates |
 | Use HTTP crawl helpers with Playwright fallback | Static sites stay lightweight while JavaScript-rendered sites remain possible | - Pending |
 | Run crawl helpers autonomously and report compact results | Avoid spending agent tokens on routine per-chapter progress while preserving logs for diagnosis | - Pending |
