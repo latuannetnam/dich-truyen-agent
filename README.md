@@ -68,75 +68,63 @@ uv run pytest
 
 ---
 
-## v1 Usage Workflow
+## v1 Usage Workflow (Skill-Based)
 
-Operating the novel workflow consists of five sequential steps guided by separate project-local skills.
+The workspace is designed to be operated interactively through Antigravity project-local skills rather than raw console scripts. The workflow is a collaborative partnership between the user and the coding-agent, governed by explicit gate checkpoints.
 
-### Step 1: Initialize the Book Workspace
-Initialize a new book workspace from a Chinese web novel source:
-```powershell
-uv run python -m dich_truyen_agent.cli init-book --slug jian-lai --title "Kiếm Lai" --source-url "https://example.com/jian-lai"
-```
-
----
-
-### Step 2: Crawl and Review Gate (Crawl Skill)
-Download raw chapters using the domain configuration profile:
-```powershell
-# 1. Batch crawl raw chapters
-uv run python -m dich_truyen_agent.cli crawl-book --slug jian-lai --source-url "https://example.com/jian-lai"
-
-# 2. Inspect crawl statistics and approve crawled content, creating the crawl-approved checkpoint
-uv run python -m dich_truyen_agent.cli approve-crawl --workspace books/jian-lai
-```
+### Step 1: Initialize the Workspace
+The user instructs the agent to initialize a clean workspace:
+> **User:** Please initialize a workspace for the book "Kiếm Lai" with slug `jian-lai` and source URL `https://example.com/jian-lai`.
+> **Agent:** *(Initializes the directory structure, loads default style configs, and sets up chapter state manifests).*
 
 ---
 
-### Step 3: Glossary Generation & Life Cycle (Glossary Skill)
-Evolve a reviewable terms dictionary:
-```powershell
-# 1. Generate an initial glossary from crawl evidence
-uv run python -m dich_truyen_agent.cli generate-glossary --slug jian-lai --chapters 1,2,3
-
-# 2. Lock a terminology mapping manually to protect it from progressive overrides
-uv run python -m dich_truyen_agent.cli lock-term --workspace books/jian-lai --term "修炼"
-```
+### Step 2: Crawl and Review Gate (`crawl-book` Skill)
+The user triggers the crawl skill to autonomously download raw novel content:
+1. **Trigger Skill:** The user runs `$crawl-book books/jian-lai/`.
+2. **Execution:** The agent executes the batch crawler (handling retries, backoffs, and Playwright rendering fallback if static parse fails) and creates `reports/crawl.yaml`.
+3. **Approval:** The user reviews the crawl report and instructs the agent to approve the raw content:
+   > **User:** The crawl report looks great, please approve the crawl for `books/jian-lai/`.
+   > **Agent:** *(Approves checkpoints, creating the cryptographically secure `checkpoints/crawl-approved.yaml` with evidence hashes).*
 
 ---
 
-### Step 4: Sequential Agent Translation (Translate Skill)
-Translate chapters sequentially. Runtimes fetch isolated contexts per chapter:
-```powershell
-# 1. Determine the next pending chapter and load context parameters (style, glossary, predecessor context)
-uv run python -m dich_truyen_agent.cli show-translation-progress --workspace books/jian-lai
-uv run python -m dich_truyen_agent.cli prepare-translation-context --workspace books/jian-lai --chapter-id 1
-
-# 2. Perform translation and save draft inside staged text. Promote staged translation atomically
-# (This steps merges terminology proposals, hashes the output, and updates state.yaml status)
-uv run python -m dich_truyen_agent.cli promote-chapter --workspace books/jian-lai --chapter-id 1
-```
+### Step 3: Glossary Generation & Life Cycle
+The glossary dictionary is initialized and evolved safely as translation proceeds:
+- After crawl approval, the agent automatically initializes `glossary.yaml` and extracts initial vocabulary.
+- The user can edit names or terms directly in `glossary.yaml` or lock crucial translations:
+  > **User:** Please lock the canonical translation for "修炼" in `books/jian-lai/`.
+  > **Agent:** *(Locks term as canonical to protect it from progressive merging).*
 
 ---
 
-### Step 5: Quality Assurance Auditing (QA Skill)
-Enforce a read-only deterministic quality scan across the finished chapters:
-```powershell
-# 1. Run structural, completeness, Chinese residue, length ratio, and conflict audits
-uv run python -m dich_truyen_agent.cli check-translation --workspace books/jian-lai
-
-# 2. Approve findings and generate the cryptographic qa-approved checkpoint gate
-uv run python -m dich_truyen_agent.cli approve-qa --workspace books/jian-lai
-```
+### Step 4: Sequential Agent Translation (`translate-book` Skill)
+The user triggers sequential translation:
+1. **Trigger Skill:** The user runs `$translate-book books/jian-lai/`.
+2. **Execution:** The agent orchestrator runs sequentially:
+   - Fetches isolated chapter context (vocabulary, style rules, and Chapter $N-1$ text).
+   - Spawns specialized translator subagents to translate Chapter $N$ without bloating the main chat session context window.
+   - Merges chapter-level progressive glossary proposals and atomically promotes translated Vietnamese chapters.
+3. **Resumption:** If transient LLM failures exhaust the 3 retries, translation pauses safely. The user can manually inspect the staged draft or glossary mapping and run `$translate-book books/jian-lai/` to resume exactly from the failed chapter.
 
 ---
 
-### Step 6: EPUB 3.3 & Calibre Format Exports (Export Skill)
-Compile canonical digital books once the QA gate is approved:
-```powershell
-# Compile canonical EPUB 3.3 and optional AZW3/MOBI/PDF derivatives
-uv run python -m dich_truyen_agent.cli export-book --workspace books/jian-lai --formats epub,azw3,mobi,pdf
-```
-Canonical ebooks are written to `books/<book-slug>/exports/`.
+### Step 5: Quality Assurance Auditing (`check-translation` Skill)
+The user triggers a read-only quality scan once translation is complete:
+1. **Trigger Skill:** The user runs `$check-translation books/jian-lai/`.
+2. **Execution:** The agent scans all files for structural gaps (missing/empty chapters), incompleteness (unbalanced quotes, missing ending punctuation), Chinese residue characters/symbols, abnormal Vietnamese-to-Chinese character length ratios, and glossary conflicts.
+3. **Approval:** If findings are clean or warnings are accepted, the user directs the agent to approve the QA:
+   > **User:** The QA report is acceptable, please approve the QA checkpoint.
+   > **Agent:** *(Saves evidence hashes of all translations to `checkpoints/qa-approved.yaml`).*
+
+---
+
+### Step 6: EPUB 3.3 Ebook Export (`export-book` Skill)
+The user compiles digital books once the QA gate is approved:
+1. **Trigger Skill:** The user runs `$export-book books/jian-lai/ epub,azw3,mobi,pdf`.
+2. **Execution:** The agent validates the QA checkpoint, compiles the canonical EPUB 3.3 ebook in-memory, performs mandatory validation checks via EPUBCheck subprocesses, and derives optional Calibre formats (AZW3, MOBI, PDF).
+3. **Outputs:** The validated canonical EPUB and Calibre derivatives are saved to `books/jian-lai/exports/`.
+
 
 ---
 
