@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from pathlib import Path
 
 import yaml
 
+from dich_truyen_agent.checkpoints import check_gate
+from dich_truyen_agent.glossary import merge_glossary_proposals
 from dich_truyen_agent.models import (
     BookMetadata,
     BookState,
@@ -16,6 +19,9 @@ from dich_truyen_agent.models import (
     TranslationStyle,
     BookGlossary,
     GlossaryConflictReport,
+    CheckpointType,
+    StageRecord,
+    GlossaryTerm,
 )
 from dich_truyen_agent.paths import (
     WorkspacePaths,
@@ -27,6 +33,7 @@ from dich_truyen_agent.storage import (
     find_orphan_temp_files,
     load_yaml_model,
     sha256_file,
+    atomic_write_text,
 )
 
 
@@ -173,3 +180,253 @@ def install_discovered_catalog(
             chapters=[ChapterState(chapter_id=chapter.chapter_id) for chapter in catalog.chapters]
         )
         atomic_write_yaml(paths.state, state)
+
+
+def prepare_translation_context(workspace_root: Path, chapter_id: int) -> OperationResult:
+    """Validate gates and return absolute context paths for the translation worker."""
+    import json
+    try:
+        workspace_root = workspace_root.resolve()
+        paths = workspace_paths(workspace_root.parent, workspace_root.name)
+        
+        # 1. Enforce crawl-approved checkpoint
+        gate_res = check_gate(workspace_root, CheckpointType.CRAWL_APPROVED)
+        if gate_res.status is not OperationStatus.OK:
+            return gate_res
+            
+        catalog = load_yaml_model(paths.chapters, ChapterCatalog)
+        state = load_yaml_model(paths.state, BookState)
+        
+        # 2. Check chapter exists in catalog
+        catalog_by_id = {ch.chapter_id: ch for ch in catalog.chapters}
+        if chapter_id not in catalog_by_id:
+            return OperationResult(
+                status=OperationStatus.ERROR,
+                reason=f"chapter {chapter_id} not found in catalog",
+            )
+            
+        entry = catalog_by_id[chapter_id]
+        
+        # 3. Enforce sequential ordering (TRAN-05)
+        state_by_id = {ch.chapter_id: ch for ch in state.chapters}
+        for ch in catalog.chapters:
+            if ch.chapter_id < chapter_id:
+                ch_state = state_by_id.get(ch.chapter_id)
+                if not ch_state or ch_state.translation.status is not StageStatus.COMPLETED:
+                    return OperationResult(
+                        status=OperationStatus.BLOCKED,
+                        reason=f"preceding chapter {ch.chapter_id} translation is not completed; sequential translation constraint violated",
+                    )
+                    
+        # 4. Resolve raw path and other paths
+        raw_path = paths.root / "raw" / entry.raw_filename
+        if not raw_path.is_file():
+            return OperationResult(
+                status=OperationStatus.ERROR,
+                reason=f"raw chapter file not found: {raw_path}",
+            )
+            
+        # 5. Resolve predecessor translation context with fallback
+        prev_translation_path = None
+        is_fallback = True
+        fallback_reason = "Chapter 1 has no predecessor context"
+        
+        if chapter_id > 1:
+            prev_entry = catalog_by_id.get(chapter_id - 1)
+            if prev_entry:
+                candidate_path = paths.root / "translations" / prev_entry.translation_filename
+                if candidate_path.is_file():
+                    prev_translation_path = str(candidate_path.resolve())
+                    is_fallback = False
+                else:
+                    fallback_reason = f"Predecessor chapter {chapter_id - 1} translation file is missing or reset"
+                    
+        context_payload = {
+            "chapter_id": chapter_id,
+            "title_cn": entry.original_title,
+            "raw_path": str(raw_path.resolve()),
+            "style_path": str(paths.style.resolve()),
+            "glossary_path": str(paths.glossary.resolve()),
+            "prev_translation_path": prev_translation_path,
+            "is_fallback": is_fallback,
+            "fallback_reason": fallback_reason if is_fallback else None,
+        }
+        
+        return OperationResult(
+            status=OperationStatus.OK,
+            reason=json.dumps(context_payload, ensure_ascii=False),
+            report_paths=[str(raw_path)],
+        )
+    except Exception as error:
+        return OperationResult(
+            status=OperationStatus.ERROR,
+            reason=f"Failed to prepare translation context: {error}",
+        )
+
+
+def promote_chapter_translation(workspace_root: Path, chapter_id: int) -> OperationResult:
+    """Validate staged translation outputs and atomically promote them, merging proposals and updating state."""
+    try:
+        workspace_root = workspace_root.resolve()
+        paths = workspace_paths(workspace_root.parent, workspace_root.name)
+        
+        catalog = load_yaml_model(paths.chapters, ChapterCatalog)
+        state = load_yaml_model(paths.state, BookState)
+        
+        catalog_by_id = {ch.chapter_id: ch for ch in catalog.chapters}
+        state_by_id = {ch.chapter_id: ch for ch in state.chapters}
+        
+        if chapter_id not in catalog_by_id or chapter_id not in state_by_id:
+            return OperationResult(
+                status=OperationStatus.ERROR,
+                reason=f"chapter {chapter_id} not found in catalog or state",
+            )
+            
+        entry = catalog_by_id[chapter_id]
+        chapter_state = state_by_id[chapter_id]
+        
+        staged_txt = paths.staging / f"chuong-{chapter_id:04d}-staged.txt"
+        staged_yaml = paths.staging / f"chuong-{chapter_id:04d}-proposals.yaml"
+        
+        # 1. Validate staged translation existence and size
+        if not staged_txt.is_file():
+            return OperationResult(
+                status=OperationStatus.ERROR,
+                reason=f"staged translation file not found: {staged_txt}",
+            )
+            
+        text = staged_txt.read_text(encoding="utf-8")
+        if not text.strip() or len(text.strip()) < 10:
+            return OperationResult(
+                status=OperationStatus.ERROR,
+                reason=f"staged translation file is empty or too short: {len(text)} characters",
+            )
+            
+        # 2. Validate glossary proposals YAML if present
+        proposals = {}
+        if staged_yaml.is_file():
+            try:
+                with staged_yaml.open(encoding="utf-8") as stream:
+                    proposals_raw = yaml.safe_load(stream)
+                if proposals_raw and isinstance(proposals_raw, dict):
+                    for term, data in proposals_raw.items():
+                        if not isinstance(data, dict):
+                            data = {}
+                        proposals[term] = GlossaryTerm(
+                            translation=data.get("translation", ""),
+                            category=data.get("category", "other"),
+                            source=f"chapter_{chapter_id}_proposal",
+                            is_canonical=False,
+                            note=data.get("note"),
+                        )
+            except Exception as e:
+                return OperationResult(
+                    status=OperationStatus.ERROR,
+                    reason=f"invalid staged proposals YAML syntax: {e}",
+                )
+                
+        # 3. Atomic Promotion of translation text
+        rel_dest_path = f"translations/{entry.translation_filename}"
+        dest_path = validate_workspace_relative_path(workspace_root, rel_dest_path)
+        atomic_write_text(dest_path, text)
+        
+        # 4. SHA256 hashing and progressive glossary merge
+        sha256 = sha256_file(dest_path)
+        merge_report_paths = []
+        if proposals:
+            merge_res = merge_glossary_proposals(workspace_root, chapter_id, proposals)
+            if merge_res.status is OperationStatus.ERROR:
+                return merge_res
+            merge_report_paths = merge_res.report_paths
+            
+        # 5. Update state.yaml translation status
+        chapter_state.translation = StageRecord(
+            status=StageStatus.COMPLETED,
+            canonical_path=rel_dest_path,
+            sha256=sha256,
+            updated_at=datetime.now(UTC),
+        )
+        atomic_write_yaml(paths.state, state)
+        
+        # 6. Clean up staging files
+        try:
+            staged_txt.unlink()
+        except OSError:
+            pass
+        if staged_yaml.is_file():
+            try:
+                staged_yaml.unlink()
+            except OSError:
+                pass
+                
+        return OperationResult(
+            status=OperationStatus.OK,
+            reason=f"chapter {chapter_id} translation promoted successfully",
+            report_paths=[rel_dest_path] + merge_report_paths,
+        )
+    except Exception as error:
+        return OperationResult(
+            status=OperationStatus.ERROR,
+            reason=f"Promotion failed: {error}",
+        )
+
+
+def get_next_pending_translation(workspace_root: Path) -> OperationResult:
+    """Identify the next sequential pending translation chapter, validating queue integrity."""
+    import json
+    try:
+        workspace_root = workspace_root.resolve()
+        paths = workspace_paths(workspace_root.parent, workspace_root.name)
+        
+        catalog = load_yaml_model(paths.chapters, ChapterCatalog)
+        state = load_yaml_model(paths.state, BookState)
+        
+        state_by_id = {ch.chapter_id: ch for ch in state.chapters}
+        
+        # Find first non-completed translation chapter
+        target_ch = None
+        for ch in catalog.chapters:
+            ch_state = state_by_id.get(ch.chapter_id)
+            if not ch_state or ch_state.translation.status is not StageStatus.COMPLETED:
+                target_ch = ch
+                break
+                
+        if not target_ch:
+            comp = sum(1 for ch in state.chapters if ch.translation.status is StageStatus.COMPLETED)
+            return OperationResult(
+                status=OperationStatus.OK,
+                reason="all chapter translations completed",
+                progress=ProgressSummary(completed=comp, total=len(catalog.chapters)),
+            )
+            
+        # Verify that all prior chapters are completed
+        for ch in catalog.chapters:
+            if ch.chapter_id < target_ch.chapter_id:
+                ch_state = state_by_id.get(ch.chapter_id)
+                if not ch_state or ch_state.translation.status is not StageStatus.COMPLETED:
+                    return OperationResult(
+                        status=OperationStatus.BLOCKED,
+                        reason=f"preceding chapter {ch.chapter_id} translation is not completed; sequential translation constraint violated",
+                        progress=ProgressSummary(
+                            completed=sum(1 for x in state.chapters if x.translation.status is StageStatus.COMPLETED),
+                            total=len(catalog.chapters),
+                        ),
+                    )
+                    
+        payload = {
+            "chapter_id": target_ch.chapter_id,
+            "slug": target_ch.slug,
+            "original_title": target_ch.original_title,
+        }
+        
+        comp = sum(1 for ch in state.chapters if ch.translation.status is StageStatus.COMPLETED)
+        return OperationResult(
+            status=OperationStatus.OK,
+            reason=json.dumps(payload, ensure_ascii=False),
+            progress=ProgressSummary(completed=comp, total=len(catalog.chapters)),
+        )
+    except Exception as error:
+        return OperationResult(
+            status=OperationStatus.ERROR,
+            reason=f"Failed to identify next pending translation: {error}",
+        )

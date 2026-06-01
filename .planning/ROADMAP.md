@@ -23,8 +23,8 @@ validated ebook export. Each phase leaves an inspectable capability that later p
 - [x] **Phase 3: Glossary Lifecycle** - Generate, evolve, and manually maintain safe terminology
       mappings. (completed 2026-06-01)
 
-- [ ] **Phase 4: Sequential Agent-Native Translation** - Translate chapters through isolated
-      workers with strict continuity and safe resume behavior.
+- [x] **Phase 4: Sequential Agent-Native Translation** - Translate chapters through isolated
+      workers with strict continuity and safe resume behavior. (completed 2026-06-01)
 
 - [ ] **Phase 5: QA Review Gate** - Generate deterministic quality findings and require user
       approval before export.
@@ -139,13 +139,13 @@ keeping the orchestrator compact and recovery deterministic.
 
 Plans:
 
-- [ ] 04-01: Define and verify native Antigravity worker protocol, staging validation, and atomic
+- [x] 04-01: Define and verify native Antigravity worker protocol, staging validation, and atomic
       promotion.
 
-- [ ] 04-02: Implement sequential orchestration, previous-chapter context, retry-stop-resume,
+- [x] 04-02: Implement sequential orchestration, previous-chapter context, retry-stop-resume,
       and glossary proposal handoff.
 
-- [ ] 04-03: Add `$translate-book` end-to-end workflow and recovery-focused fixtures.
+- [x] 04-03: Add `$translate-book` end-to-end workflow and recovery-focused fixtures.
 
 ### Phase 5: QA Review Gate
 
@@ -204,6 +204,6 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6
 | 1. Workspace Contracts and Skill Skeletons | 2/2 | Complete   | 2026-05-31 |
 | 2. Crawl and Raw Review Gate | 3/3 | Complete   | 2026-06-01 |
 | 3. Glossary Lifecycle | 2/2 | Complete   | 2026-06-01 |
-| 4. Sequential Agent-Native Translation | 0/3 | Not started | - |
+| 4. Sequential Agent-Native Translation | 3/3 | Complete   | 2026-06-01 |
 | 5. QA Review Gate | 0/2 | Not started | - |
 | 6. EPUB 3.3 and Format Conversion | 0/3 | Not started | - |

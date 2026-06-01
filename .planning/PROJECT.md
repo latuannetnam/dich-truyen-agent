@@ -24,6 +24,9 @@ checkpoints while keeping each agent task small, inspectable, and recoverable.
 - [x] Phase 1 established atomic filesystem workspace contracts, strict resume inspection, and
       hash-backed approval checkpoint gates.
 - [x] Phase 1 validated custom YAML translation styles and the bundled `tien_hiep` template.
+- [x] Phase 2 established autonomous batch crawling, domain profiles, book overrides, Playwright fallback, and raw-review gating.
+- [x] Phase 3 established automated initial glossary generation, progressive term merging, snapshot backups, and lock validations.
+- [x] Phase 4 established sequential context-isolated translation workers, continuity fallbacks, staging validation, atomic promotion CLI subcommands, and skill loop orchestration.
 
 ### Active
 
@@ -36,12 +39,6 @@ checkpoints while keeping each agent task small, inspectable, and recoverable.
       QA reports, and exports in a resumable filesystem workspace.
 - [ ] Require a user checkpoint after crawl so raw chapter data can be reviewed before
       translation starts.
-- [ ] Generate an initial glossary automatically from crawled chapters and merge validated new
-      term proposals after each translated chapter.
-- [ ] Translate chapters sequentially through context-isolated subagents so each chapter can use
-      the completed Vietnamese translation of the previous chapter as context.
-- [ ] Retry failed chapter translations with configurable backoff and stop the translation run
-      if retries are exhausted so the user can resolve the issue and resume safely.
 - [ ] Generate a deterministic QA report covering structural and glossary consistency issues,
       then require user review before export.
 - [ ] Export a validated EPUB 3.3 ebook directly and convert it to AZW3, MOBI, or PDF through

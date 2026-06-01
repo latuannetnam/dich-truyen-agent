@@ -92,6 +92,18 @@ def build_parser() -> argparse.ArgumentParser:
     lock_t.add_argument("--workspace", type=Path, required=True)
     lock_t.add_argument("--term", required=True)
 
+    # Phase 4 Translation Commands
+    prep_trans = subparsers.add_parser("prepare-translation-context")
+    prep_trans.add_argument("--workspace", type=Path, required=True)
+    prep_trans.add_argument("--chapter-id", type=int, required=True)
+
+    prom_ch = subparsers.add_parser("promote-chapter")
+    prom_ch.add_argument("--workspace", type=Path, required=True)
+    prom_ch.add_argument("--chapter-id", type=int, required=True)
+
+    show_prog = subparsers.add_parser("show-translation-progress")
+    show_prog.add_argument("--workspace", type=Path, required=True)
+
     return parser
 
 
@@ -303,6 +315,36 @@ def run_command(args: argparse.Namespace) -> OperationResult:
             result = OperationResult(
                 status=OperationStatus.ERROR,
                 reason=f"Lock term failed: {e}",
+            )
+    elif args.command == "prepare-translation-context":
+        from dich_truyen_agent.workspace import prepare_translation_context
+        
+        try:
+            result = prepare_translation_context(args.workspace, args.chapter_id)
+        except Exception as e:
+            result = OperationResult(
+                status=OperationStatus.ERROR,
+                reason=f"Prepare translation context failed: {e}",
+            )
+    elif args.command == "promote-chapter":
+        from dich_truyen_agent.workspace import promote_chapter_translation
+        
+        try:
+            result = promote_chapter_translation(args.workspace, args.chapter_id)
+        except Exception as e:
+            result = OperationResult(
+                status=OperationStatus.ERROR,
+                reason=f"Promote chapter failed: {e}",
+            )
+    elif args.command == "show-translation-progress":
+        from dich_truyen_agent.workspace import get_next_pending_translation
+        
+        try:
+            result = get_next_pending_translation(args.workspace)
+        except Exception as e:
+            result = OperationResult(
+                status=OperationStatus.ERROR,
+                reason=f"Show translation progress failed: {e}",
             )
     else:
         raise ValueError(f"unsupported command: {args.command}")

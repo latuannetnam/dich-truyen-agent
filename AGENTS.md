@@ -198,6 +198,24 @@ shim in `tests/conftest.py` creates pytest temporary directories with inherited 
 initializes `.pytest_cache` before pytest uses its inaccessible staging path. If pytest is
 upgraded, rerun the suite from a fresh subagent because the shim patches private pytest helpers.
 
+## Windows Console UTF-8 & Unicode Troubleshooting
+
+When running Python CLI scripts or tests that output Sino-Vietnamese unicode characters on Windows, the console may crash with a `UnicodeEncodeError` (e.g. `'charmap' codec can't encode...`) if the default system codepage (like CP1252 or CP936) is active. 
+
+To run scripts successfully with UTF-8 unicode encoding, prepend the command with the `PYTHONUTF8` environment variable:
+
+```powershell
+$env:PYTHONUTF8=1
+uv run python main.py <command>
+```
+
+Alternatively, configure the standard IO encoding directly in the terminal session:
+
+```powershell
+$env:PYTHONIOENCODING="utf-8"
+uv run python main.py <command>
+```
+
 <!-- GSD:profile-start -->
 
 ## Developer Profile

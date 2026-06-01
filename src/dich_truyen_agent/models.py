@@ -107,7 +107,7 @@ class TranslationStyle(PersistedModel):
     guidelines: list[str] = Field(default_factory=list)
     vocabulary: dict[str, str] = Field(default_factory=dict)
     tone: str
-    examples: list[str] = Field(default_factory=list)
+    examples: list[str | dict[str, str]] = Field(default_factory=list)
 
 
 class CrawlSettings(BaseSettings):
