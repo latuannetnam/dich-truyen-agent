@@ -115,7 +115,7 @@ def build_parser() -> argparse.ArgumentParser:
     # Phase 6 Export Commands
     export_cmd = subparsers.add_parser("export-book")
     export_cmd.add_argument("--workspace", type=Path, required=True)
-    export_cmd.add_argument("--formats", default="epub")
+    export_cmd.add_argument("--formats", default="epub,azw3")
 
     return parser
 

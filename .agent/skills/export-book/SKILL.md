@@ -7,15 +7,15 @@ metadata:
 
 # Export Book
 
-This skill compiles a sequential, QA-approved translation workspace into a conformant canonical EPUB 3.3 ebook and derives optional AZW3, MOBI, and PDF formats through Calibre `ebook-convert`.
+This skill compiles a sequential, QA-approved translation workspace into conformant canonical EPUB and AZW3 ebook formats by default, and derives MOBI and PDF only if explicitly requested.
 
 ## CLI Usage
 
 ```powershell
-# Default: generate canonical EPUB only (enforces QA approval checkpoint)
+# Default: generate canonical EPUB + AZW3 only (enforces QA approval checkpoint)
 uv run python -m dich_truyen_agent.cli export-book --workspace books/<book-slug>
 
-# Generate EPUB and optional derivatives (AZW3, MOBI, PDF)
+# Generate EPUB + AZW3 along with optional derivatives (MOBI, PDF)
 uv run python -m dich_truyen_agent.cli export-book --workspace books/<book-slug> --formats epub,azw3,mobi,pdf
 ```
 
