@@ -29,8 +29,9 @@ validated ebook export. Each phase leaves an inspectable capability that later p
 - [x] **Phase 5: QA Review Gate** - Generate deterministic quality findings and require user
       approval before export. (completed 2026-06-01)
 
-- [ ] **Phase 6: EPUB 3.3 and Format Conversion** - Produce validated canonical EPUB ebooks and
-      Calibre derivatives through the complete skill surface.
+- [x] **Phase 6: EPUB 3.3 and Format Conversion** - Produce validated canonical EPUB ebooks and
+      Calibre derivatives through the complete skill surface. (completed 2026-06-01)
+
 
 ## Phase Details
 
@@ -189,9 +190,9 @@ formats through Calibre.
 
 Plans:
 
-- [ ] 06-01: Build EPUB 3.3 package assembly and deterministic ZIP/EPUB invariant validation.
-- [ ] 06-02: Integrate mandatory EPUBCheck and Calibre `ebook-convert` derivatives.
-- [ ] 06-03: Add `$export-book`, verify the four-skill command surface, and exercise the full
+- [x] 06-01: Build EPUB 3.3 package assembly and deterministic ZIP/EPUB invariant validation.
+- [x] 06-02: Integrate mandatory EPUBCheck and Calibre `ebook-convert` derivatives.
+- [x] 06-03: Add `$export-book`, verify the four-skill command surface, and exercise the full
       staged workflow.
 
 ## Progress
@@ -206,4 +207,5 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6
 | 3. Glossary Lifecycle | 2/2 | Complete   | 2026-06-01 |
 | 4. Sequential Agent-Native Translation | 3/3 | Complete   | 2026-06-01 |
 | 5. QA Review Gate | 2/2 | Complete   | 2026-06-01 |
-| 6. EPUB 3.3 and Format Conversion | 0/3 | Not started | - |
+| 6. EPUB 3.3 and Format Conversion | 3/3 | Complete   | 2026-06-01 |
+

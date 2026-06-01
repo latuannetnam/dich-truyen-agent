@@ -7,10 +7,25 @@ metadata:
 
 # Export Book
 
-Arguments: `books/<book-slug>/` and requested output formats.
+This skill compiles a sequential, QA-approved translation workspace into a conformant canonical EPUB 3.3 ebook and derives optional AZW3, MOBI, and PDF formats through Calibre `ebook-convert`.
 
-Run the deterministic `check-gate` helper for the incoming `qa-approved` checkpoint before
-reading translations. Write exports beneath `books/<book-slug>/exports/` and compact helper
-metadata beneath `books/<book-slug>/reports/results/`.
+## CLI Usage
 
-Failure: ebook export is not implemented by Phase 1. Stop and report that Phase 6 owns this step.
+```powershell
+# Default: generate canonical EPUB only (enforces QA approval checkpoint)
+uv run python -m dich_truyen_agent.cli export-book --workspace books/<book-slug>
+
+# Generate EPUB and optional derivatives (AZW3, MOBI, PDF)
+uv run python -m dich_truyen_agent.cli export-book --workspace books/<book-slug> --formats epub,azw3,mobi,pdf
+```
+
+## System Environment Variables
+
+- `DICH_TRUYEN_EPUBCHECK_PATH`: Path to your `epubcheck.jar` file or installation folder. (EPUBCheck is required to validate canonical EPUB compliance before export completes successfully).
+- `DICH_TRUYEN_CALIBRE_PATH`: Path to Calibre's `ebook-convert` executable (optional; if missing, derivative format compilation is skipped with a warning, but canonical EPUB generation completes successfully).
+
+## Outputs
+
+- Canonically compiled EPUB is written atomically to `books/<book-slug>/exports/<book-slug>.epub`.
+- Derivative formats are written to the same directory as `books/<book-slug>/exports/<book-slug>.<format>`.
+- Export results are logged to `books/<book-slug>/reports/results/export-book.yaml`.

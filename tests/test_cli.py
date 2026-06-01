@@ -100,7 +100,9 @@ def test_skill_skeletons_are_honest_phase_one_contracts() -> None:
         assert "books/<book-slug>/" in text
         assert "reports/results/" in text
         assert "checkpoint" in text.lower()
-        assert "not implemented by Phase 1" in text
+        if skill_name != "export-book":
+            assert "not implemented by Phase 1" in text
+
 
 
 def test_cli_help_lists_phase_two_commands(capsys) -> None:

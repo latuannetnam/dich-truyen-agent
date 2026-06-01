@@ -112,7 +112,13 @@ def build_parser() -> argparse.ArgumentParser:
     app_qa = subparsers.add_parser("approve-qa")
     app_qa.add_argument("--workspace", type=Path, required=True)
 
+    # Phase 6 Export Commands
+    export_cmd = subparsers.add_parser("export-book")
+    export_cmd.add_argument("--workspace", type=Path, required=True)
+    export_cmd.add_argument("--formats", default="epub")
+
     return parser
+
 
 
 def _persist_result(workspace_root: Path | None, command: str, result: OperationResult) -> None:
@@ -436,8 +442,20 @@ def run_command(args: argparse.Namespace) -> OperationResult:
                 status=OperationStatus.ERROR,
                 reason=f"QA approval failed: {e}",
             )
+    elif args.command == "export-book":
+        from dich_truyen_agent.export import export_book
+        
+        try:
+            formats_list = [f.strip() for f in args.formats.split(",") if f.strip()]
+            result = export_book(args.workspace, formats_list)
+        except Exception as e:
+            result = OperationResult(
+                status=OperationStatus.ERROR,
+                reason=f"Export failed: {e}",
+            )
     else:
         raise ValueError(f"unsupported command: {args.command}")
+
     _persist_result(workspace_root, args.command, result)
     return result
 
