@@ -392,7 +392,7 @@ def run_command(args: argparse.Namespace) -> OperationResult:
             result = OperationResult(
                 status=OperationStatus.OK if report.summary['passed'] else OperationStatus.BLOCKED,
                 reason=f"QA check completed with {report.summary['findings_count']} findings",
-                report_paths=[str(qa_report_path.relative_to(args.workspace.resolve()).as_posix())],
+                report_paths=[str(qa_report_path.resolve().relative_to(args.workspace.resolve()).as_posix())],
             )
         except Exception as e:
             result = OperationResult(
@@ -419,21 +419,21 @@ def run_command(args: argparse.Namespace) -> OperationResult:
                 result = OperationResult(
                     status=OperationStatus.BLOCKED,
                     reason=f"QA approval blocked: workspace contains {report.summary['error_count']} critical errors. Run main.py check-translation for details.",
-                    report_paths=[str(qa_report_path.relative_to(args.workspace.resolve()).as_posix())],
+                    report_paths=[str(qa_report_path.resolve().relative_to(args.workspace.resolve()).as_posix())],
                 )
             else:
                 # Evidence hashing: all translation files in Chapters catalog
                 catalog = load_yaml_model(paths.chapters, ChapterCatalog)
-                evidence = [str(qa_report_path.relative_to(args.workspace.resolve()).as_posix())]
+                evidence = [str(qa_report_path.resolve().relative_to(args.workspace.resolve()).as_posix())]
                 for entry in catalog.chapters:
                     trans_file = paths.translations / entry.translation_filename
                     if trans_file.is_file():
-                        evidence.append(str(trans_file.relative_to(args.workspace.resolve()).as_posix()))
+                        evidence.append(str(trans_file.resolve().relative_to(args.workspace.resolve()).as_posix()))
                         
                 result = approve_checkpoint(
                     workspace_root=args.workspace,
                     checkpoint_type=CheckpointType.QA_APPROVED,
-                    report_path=str(qa_report_path.relative_to(args.workspace.resolve()).as_posix()),
+                    report_path=str(qa_report_path.resolve().relative_to(args.workspace.resolve()).as_posix()),
                     evidence_paths=evidence,
                     scope=ApprovalScope.FULL if report.summary["findings_count"] == 0 else ApprovalScope.PARTIAL,
                 )

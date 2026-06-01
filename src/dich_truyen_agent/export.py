@@ -381,7 +381,7 @@ def export_book(workspace_root: Path, formats: list[str]) -> OperationResult:
         epub_path = paths.exports / f"{book_metadata.book_slug}.epub"
 
         # We write to a temporary file in the same directory for atomic replace
-        temp_epub = epub_path.with_name(f".{epub_path.name}.{uuid.uuid4().hex}.tmp")
+        temp_epub = epub_path.with_name(f".{epub_path.name}.{uuid.uuid4().hex}.tmp.epub")
         temp_epub.write_bytes(epub_bytes)
 
         # 6. Run EPUBCheck on the generated temporary EPUB first (so we don't save a corrupt EPUB)
