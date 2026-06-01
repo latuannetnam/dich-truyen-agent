@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import os
 import re
 from datetime import UTC, datetime
 from pathlib import Path
@@ -41,7 +40,7 @@ from dich_truyen_agent.storage import (
     sha256_file,
 )
 from dich_truyen_agent.styles import load_selected_style
-from dich_truyen_agent.workspace import initialize_workspace, install_discovered_catalog
+from dich_truyen_agent.workspace import initialize_workspace
 
 
 def is_recoverable_exception(exc: Exception) -> bool:

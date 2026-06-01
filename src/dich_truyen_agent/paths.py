@@ -23,6 +23,9 @@ class WorkspacePaths:
     results: Path
     checkpoints: Path
     exports: Path
+    glossary: Path
+    glossary_snapshots: Path
+    glossary_conflicts: Path
 
     @property
     def stage_directories(self) -> tuple[Path, ...]:
@@ -34,6 +37,7 @@ class WorkspacePaths:
             self.results,
             self.checkpoints,
             self.exports,
+            self.glossary_snapshots,
         )
 
     def checkpoint(self, checkpoint_type: str) -> Path:
@@ -91,6 +95,9 @@ def workspace_paths(books_root: Path, book_slug: str) -> WorkspacePaths:
         results=reports / "results",
         checkpoints=root / "checkpoints",
         exports=root / "exports",
+        glossary=root / "glossary.yaml",
+        glossary_snapshots=root / "checkpoints" / "glossary-snapshots",
+        glossary_conflicts=reports / "glossary-conflicts.yaml",
     )
 
 

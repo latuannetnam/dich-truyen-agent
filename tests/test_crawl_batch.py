@@ -1,14 +1,12 @@
-import asyncio
 from pathlib import Path
 
 import httpx
 import pytest
 
 from dich_truyen_agent.crawl_batch import crawl_book, detect_anti_bot_blocking, is_recoverable_exception
-from dich_truyen_agent.crawler import CrawlProfile
-from dich_truyen_agent.models import BookState, ChapterCatalog, CrawlSettings, OperationStatus, StageStatus
+from dich_truyen_agent.models import BookState, CrawlSettings, OperationStatus, StageStatus
 from dich_truyen_agent.paths import workspace_paths
-from dich_truyen_agent.storage import atomic_write_yaml, load_yaml_model
+from dich_truyen_agent.storage import load_yaml_model
 
 
 def test_is_recoverable_exception() -> None:

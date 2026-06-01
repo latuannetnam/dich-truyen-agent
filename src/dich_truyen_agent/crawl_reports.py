@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import re
 from pathlib import Path
 
 from dich_truyen_agent.crawler import validate_discovered_catalog

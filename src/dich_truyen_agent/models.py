@@ -221,3 +221,31 @@ class CrawlReport(PersistedModel):
     chapter_lengths: dict[str, int] = Field(default_factory=dict)
     suspicious_residue_findings: dict[str, list[str]] = Field(default_factory=dict)
     excerpts: dict[str, dict[str, str]] = Field(default_factory=dict)
+
+
+class GlossaryTerm(PersistedModel):
+    translation: str = Field(min_length=1)
+    category: str = Field(default="other")  # character, sect, location, item, cultivation, other
+    source: str = Field(min_length=1)      # manual, initial_generation, chapter_N_proposal
+    is_canonical: bool = Field(default=False)
+    note: str | None = None
+
+
+class BookGlossary(PersistedModel):
+    schema_version: int = 1
+    terms: dict[str, GlossaryTerm] = Field(default_factory=dict)  # Chinese term -> GlossaryTerm
+
+
+class GlossaryConflict(PersistedModel):
+    term: str = Field(min_length=1)
+    existing_translation: str = Field(min_length=1)
+    existing_source: str = Field(min_length=1)
+    proposed_translation: str = Field(min_length=1)
+    proposed_source: str = Field(min_length=1)
+    chapter_id: int = Field(gt=0)
+
+
+class GlossaryConflictReport(PersistedModel):
+    schema_version: int = 1
+    conflicts: list[GlossaryConflict] = Field(default_factory=list)
+

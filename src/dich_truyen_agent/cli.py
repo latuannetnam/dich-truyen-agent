@@ -5,7 +5,6 @@ from pathlib import Path
 
 from dich_truyen_agent.checkpoints import approve_checkpoint, check_gate
 from dich_truyen_agent.models import (
-    ApprovalScope,
     BookMetadata,
     BookState,
     ChapterCatalog,
@@ -13,6 +12,7 @@ from dich_truyen_agent.models import (
     CrawlSettings,
     OperationResult,
     OperationStatus,
+    GlossaryTerm,
 )
 from dich_truyen_agent.paths import workspace_paths
 from dich_truyen_agent.storage import atomic_write_yaml
@@ -75,6 +75,22 @@ def build_parser() -> argparse.ArgumentParser:
     app_crawl = subparsers.add_parser("approve-crawl")
     app_crawl.add_argument("--workspace", type=Path, required=True)
     app_crawl.add_argument("--max-chapters", type=int, default=0)
+
+    # Phase 3 Glossary Commands
+    gen_glos = subparsers.add_parser("generate-glossary")
+    gen_glos.add_argument("--books-root", type=Path, default=Path("books"))
+    gen_glos.add_argument("--slug", required=True)
+    gen_glos.add_argument("--chapters", default="1,2,3")
+    gen_glos.add_argument("--terms-input", type=Path)
+
+    merge_prop = subparsers.add_parser("merge-proposals")
+    merge_prop.add_argument("--workspace", type=Path, required=True)
+    merge_prop.add_argument("--chapter-id", type=int, required=True)
+    merge_prop.add_argument("--proposals", type=Path, required=True)
+
+    lock_t = subparsers.add_parser("lock-term")
+    lock_t.add_argument("--workspace", type=Path, required=True)
+    lock_t.add_argument("--term", required=True)
 
     return parser
 
@@ -177,7 +193,6 @@ def run_command(args: argparse.Namespace) -> OperationResult:
         from dich_truyen_agent.storage import load_yaml_model
         from dich_truyen_agent.crawl_profiles import load_active_crawl_profile
         from dich_truyen_agent.crawl_reports import build_crawl_report, approval_blockers
-        from dich_truyen_agent.checkpoints import approve_checkpoint
         
         try:
             paths = workspace_paths(args.workspace.parent, args.workspace.name)
@@ -223,6 +238,71 @@ def run_command(args: argparse.Namespace) -> OperationResult:
             result = OperationResult(
                 status=OperationStatus.ERROR,
                 reason=f"crawl approval failed: {e}",
+            )
+    elif args.command == "generate-glossary":
+        from dich_truyen_agent.glossary import initialize_glossary_file
+        import yaml
+        
+        try:
+            workspace_root = workspace_paths(args.books_root, args.slug).root
+            
+            # Load from input file if provided
+            if args.terms_input:
+                if not args.terms_input.is_file():
+                    result = OperationResult(
+                        status=OperationStatus.ERROR,
+                        reason=f"Terms input file does not exist: {args.terms_input}",
+                    )
+                else:
+                    with args.terms_input.open(encoding="utf-8") as stream:
+                        terms_data = yaml.safe_load(stream)
+                    result = initialize_glossary_file(workspace_root, terms_data)
+            else:
+                result = initialize_glossary_file(workspace_root, {})
+        except Exception as e:
+            result = OperationResult(
+                status=OperationStatus.ERROR,
+                reason=f"Glossary generation failed: {e}",
+            )
+    elif args.command == "merge-proposals":
+        from dich_truyen_agent.glossary import merge_glossary_proposals
+        from dich_truyen_agent.storage import load_yaml_model
+        import yaml
+        
+        try:
+            if not args.proposals.is_file():
+                result = OperationResult(
+                    status=OperationStatus.ERROR,
+                    reason=f"Proposals file does not exist: {args.proposals}",
+                )
+            else:
+                with args.proposals.open(encoding="utf-8") as stream:
+                    proposals_raw = yaml.safe_load(stream)
+                
+                proposals = {}
+                for term, data in proposals_raw.items():
+                    proposals[term] = GlossaryTerm(
+                        translation=data.get("translation", ""),
+                        category=data.get("category", "other"),
+                        source=f"chapter_{args.chapter_id}_proposal",
+                        is_canonical=False,
+                        note=data.get("note"),
+                    )
+                result = merge_glossary_proposals(args.workspace, args.chapter_id, proposals)
+        except Exception as e:
+            result = OperationResult(
+                status=OperationStatus.ERROR,
+                reason=f"Merge proposals failed: {e}",
+            )
+    elif args.command == "lock-term":
+        from dich_truyen_agent.glossary import lock_glossary_term
+        
+        try:
+            result = lock_glossary_term(args.workspace, args.term)
+        except Exception as e:
+            result = OperationResult(
+                status=OperationStatus.ERROR,
+                reason=f"Lock term failed: {e}",
             )
     else:
         raise ValueError(f"unsupported command: {args.command}")

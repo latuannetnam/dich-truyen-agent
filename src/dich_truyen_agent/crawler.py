@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import re
-from pathlib import Path
 from urllib.parse import urljoin, urlparse
 
 import chardet
@@ -12,6 +11,7 @@ from dich_truyen_agent.models import (
     ChapterCatalog,
     ChapterCatalogEntry,
     CrawlProfile,
+    CrawlSettings,
     DiscoveredChapter,
     ExtractedChapter,
 )

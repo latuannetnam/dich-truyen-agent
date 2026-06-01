@@ -14,6 +14,8 @@ from dich_truyen_agent.models import (
     ProgressSummary,
     StageStatus,
     TranslationStyle,
+    BookGlossary,
+    GlossaryConflictReport,
 )
 from dich_truyen_agent.paths import (
     WorkspacePaths,
@@ -136,6 +138,10 @@ def inspect_workspace(workspace_root: Path) -> OperationResult:
         load_yaml_model(paths.style, TranslationStyle)
         validate_catalog_state(catalog, state)
         _validate_completed_artifacts(paths, catalog, state)
+        if paths.glossary.exists():
+            load_yaml_model(paths.glossary, BookGlossary)
+        if paths.glossary_conflicts.exists():
+            load_yaml_model(paths.glossary_conflicts, GlossaryConflictReport)
     except (OSError, ValueError, yaml.YAMLError) as error:
         return OperationResult(
             status=OperationStatus.BLOCKED,

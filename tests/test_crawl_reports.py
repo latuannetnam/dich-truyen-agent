@@ -55,7 +55,7 @@ def workspace_with_raw(books_root: Path, style) -> Path:
     )
     
     # Mark state as complete
-    state = load_yaml_model = BookState(
+    state = BookState(
         chapters=[
             ChapterState(
                 chapter_id=1,

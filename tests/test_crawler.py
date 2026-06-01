@@ -1,6 +1,4 @@
 import pytest
-from bs4 import BeautifulSoup
-from pydantic import ValidationError
 
 from dich_truyen_agent.crawler import (
     decode_html,
