@@ -399,6 +399,23 @@ The verb owns the canonical predicate (tdd="true" frontmatter AND `<behavior>` b
 <task_commit_protocol>
 After each task completes (verification passed, done criteria met), commit immediately.
 
+**Codex child-agent approval boundary (MANDATORY):**
+
+When running as a Codex child executor, do **not** call a shell tool with
+`sandbox_permissions="require_escalated"`. Nested child-agent approval requests are not
+reliably forwarded to the parent IDE thread and can leave the executor waiting silently.
+
+If a required command fails because sandbox ACLs or network restrictions require escalation:
+
+1. STOP immediately. Do not retry with `require_escalated`.
+2. Return `## CHECKPOINT REACHED` with type `human-action`.
+3. Include the exact single command the parent orchestrator must run with escalation.
+4. After the parent completes that command, continue in a fresh executor.
+
+For Git commits, run `git add` and `git commit` as separate commands. Never bundle staging,
+commit, status, rev-parse, or diff checks into one shell chain. If either command fails with
+`.git/index.lock` permission denied, return the checkpoint immediately.
+
 **0a. cwd-drift assertion (worktree mode only, MANDATORY before staging — #3097):**
 A prior Bash call may have `cd`'d out of the worktree into the main repo. When that happens
 `[ -f .git ]` is false (main repo's `.git` is a directory), silently skipping all worktree guards.
