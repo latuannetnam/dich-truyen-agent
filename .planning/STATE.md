@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: completed
-stopped_at: Phase 3 context gathered
-last_updated: "2026-06-01T04:11:29.967Z"
-last_activity: 2026-06-01 -- Phase 02 completed
+status: active
+stopped_at: Phase 3 completed
+last_updated: "2026-06-01T11:30:00.000Z"
+last_activity: 2026-06-01 -- Phase 03 completed
 progress:
   total_phases: 6
-  completed_phases: 1
-  total_plans: 5
-  completed_plans: 2
-  percent: 17
+  completed_phases: 3
+  total_plans: 15
+  completed_plans: 7
+  percent: 47
 ---
 
 # Project State
@@ -22,14 +22,14 @@ See: .planning/PROJECT.md (updated 2026-05-31)
 
 **Core value:** Produce resumable, high-quality Vietnamese novel translations through explicit
 review checkpoints while keeping each agent task small, inspectable, and recoverable.
-**Current focus:** Phase 02 — crawl-and-raw-review-gate
+**Current focus:** Phase 04 — sequential-agent-native-translation
 
 ## Current Position
 
-Phase: 02 (crawl-and-raw-review-gate) — COMPLETED
-Plan: 1 of 3
-Status: Completed Phase 02
-Last activity: 2026-06-01 -- Phase 02 completed
+Phase: 03 (glossary-lifecycle) — COMPLETED
+Plan: 2 of 2
+Status: Completed Phase 03
+Last activity: 2026-06-01 -- Phase 03 completed
 
 Progress: [████████████████████] 2/2 plans (100%)
 
@@ -37,24 +37,31 @@ Progress: [████████████████████] 2/2 pla
 
 **Velocity:**
 
-- Total plans completed: 2
-- Average duration: -
-- Total execution time: 0.0 hours
+- Total plans completed: 7
+- Average duration: 16 min
+- Total execution time: 1.9 hours
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
-| 01 | 2 | - | - |
+| 01 | 2 | 30 min | 15 min |
+| 02 | 3 | 45 min | 15 min |
+| 03 | 2 | 35 min | 17.5 min |
 
 **Recent Trend:**
 
-- Last 5 plans: -
-- Trend: -
+- Last 5 plans: Stable
+- Trend: Excellent execution
 
 *Updated after each plan completion*
 | Phase 01 P01 | 18 min | 3 tasks | 11 files |
 | Phase 01 P02 | 12 min | 3 tasks | 12 files |
+| Phase 02 P01 | 15 min | 4 tasks | 8 files  |
+| Phase 02 P02 | 15 min | 4 tasks | 6 files  |
+| Phase 02 P03 | 15 min | 3 tasks | 7 files  |
+| Phase 03 P01 | 15 min | 3 tasks | 6 files  |
+| Phase 03 P02 | 20 min | 3 tasks | 3 files  |
 
 ## Accumulated Context
 
@@ -66,6 +73,7 @@ Recent decisions affecting current work:
 - Use layered dependency-driven phases instead of vertical MVP slices.
 - Crawl helpers run autonomously and return compact metadata to conserve agent tokens.
 - EPUBCheck is mandatory before accepting the canonical EPUB 3.3 artifact.
+- Lock terms with `is_canonical: true` and `source: manual` to protect them from progressive merging.
 
 ### Pending Todos
 
@@ -73,7 +81,6 @@ None yet.
 
 ### Blockers/Concerns
 
-- Phase 2 needs representative crawl fixtures from real target domains.
 - Phase 4 must confirm the exact native Codex worker invocation contract.
 - Phase 6 must document EPUBCheck installation and invocation behavior.
 
@@ -93,6 +100,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-06-01T04:11:29.962Z
-Stopped at: Phase 3 context gathered
-Resume file: .planning/phases/03-glossary-lifecycle/03-CONTEXT.md
+Last session: 2026-06-01T11:30:00.000Z
+Stopped at: Phase 3 completed
+Resume file: .planning/phases/03-glossary-lifecycle/03-02-SUMMARY.md
