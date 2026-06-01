@@ -17,7 +17,7 @@ validated ebook export. Each phase leaves an inspectable capability that later p
 - [x] **Phase 1: Workspace Contracts and Skill Skeletons** - Establish the safe local foundation (completed 2026-05-31)
       shared by every workflow step.
 
-- [ ] **Phase 2: Crawl and Raw Review Gate** - Crawl books autonomously into validated raw
+- [x] **Phase 2: Crawl and Raw Review Gate** - Crawl books autonomously into validated raw
       workspaces and require user approval.
 
 - [ ] **Phase 3: Glossary Lifecycle** - Generate, evolve, and manually maintain safe terminology
