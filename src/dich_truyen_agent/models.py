@@ -249,3 +249,26 @@ class GlossaryConflictReport(PersistedModel):
     schema_version: int = 1
     conflicts: list[GlossaryConflict] = Field(default_factory=list)
 
+
+class QAFindingType(str, Enum):
+    STRUCTURAL = "structural"
+    RESIDUE = "residue"
+    LENGTH = "length"
+    GLOSSARY = "glossary"
+
+
+class QAFinding(PersistedModel):
+    chapter_id: int = Field(gt=0)
+    finding_type: QAFindingType
+    severity: str = Field(default="warning")  # warning, error
+    message: str = Field(min_length=1)
+    details: dict = Field(default_factory=dict)
+
+
+class QAReport(PersistedModel):
+    schema_version: int = 1
+    generated_at: datetime = Field(default_factory=datetime.now)
+    summary: dict = Field(default_factory=dict)
+    findings: list[QAFinding] = Field(default_factory=list)
+
+

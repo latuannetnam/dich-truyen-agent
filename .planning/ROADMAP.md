@@ -26,8 +26,8 @@ validated ebook export. Each phase leaves an inspectable capability that later p
 - [x] **Phase 4: Sequential Agent-Native Translation** - Translate chapters through isolated
       workers with strict continuity and safe resume behavior. (completed 2026-06-01)
 
-- [ ] **Phase 5: QA Review Gate** - Generate deterministic quality findings and require user
-      approval before export.
+- [x] **Phase 5: QA Review Gate** - Generate deterministic quality findings and require user
+      approval before export. (completed 2026-06-01)
 
 - [ ] **Phase 6: EPUB 3.3 and Format Conversion** - Produce validated canonical EPUB ebooks and
       Calibre derivatives through the complete skill surface.
@@ -164,8 +164,8 @@ approval before export.
 
 Plans:
 
-- [ ] 05-01: Implement deterministic structural, residue, length, and glossary conflict checks.
-- [ ] 05-02: Add QA report rendering, `$check-translation`, and QA approval checkpoint.
+- [x] 05-01: Implement deterministic structural, residue, length, and glossary conflict checks.
+- [x] 05-02: Add QA report rendering, `$check-translation`, and QA approval checkpoint.
 
 ### Phase 6: EPUB 3.3 and Format Conversion
 
@@ -205,5 +205,5 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6
 | 2. Crawl and Raw Review Gate | 3/3 | Complete   | 2026-06-01 |
 | 3. Glossary Lifecycle | 2/2 | Complete   | 2026-06-01 |
 | 4. Sequential Agent-Native Translation | 3/3 | Complete   | 2026-06-01 |
-| 5. QA Review Gate | 0/2 | Not started | - |
+| 5. QA Review Gate | 2/2 | Complete   | 2026-06-01 |
 | 6. EPUB 3.3 and Format Conversion | 0/3 | Not started | - |

@@ -5,6 +5,7 @@ from pathlib import Path
 
 from dich_truyen_agent.checkpoints import approve_checkpoint, check_gate
 from dich_truyen_agent.models import (
+    ApprovalScope,
     BookMetadata,
     BookState,
     ChapterCatalog,
@@ -103,6 +104,13 @@ def build_parser() -> argparse.ArgumentParser:
 
     show_prog = subparsers.add_parser("show-translation-progress")
     show_prog.add_argument("--workspace", type=Path, required=True)
+
+    # Phase 5 Quality Assurance Commands
+    check_trans = subparsers.add_parser("check-translation")
+    check_trans.add_argument("--workspace", type=Path, required=True)
+
+    app_qa = subparsers.add_parser("approve-qa")
+    app_qa.add_argument("--workspace", type=Path, required=True)
 
     return parser
 
@@ -345,6 +353,88 @@ def run_command(args: argparse.Namespace) -> OperationResult:
             result = OperationResult(
                 status=OperationStatus.ERROR,
                 reason=f"Show translation progress failed: {e}",
+            )
+    elif args.command == "check-translation":
+        from dich_truyen_agent.qa import run_qa_check
+        
+        try:
+            # 1. Run check
+            report = run_qa_check(args.workspace)
+            
+            # 2. Persist report.yaml atomically
+            paths = workspace_paths(args.workspace.parent, args.workspace.name)
+            qa_report_path = paths.reports / "qa-report.yaml"
+            atomic_write_yaml(qa_report_path, report)
+            
+            # 3. Print beautiful Markdown table to console stdout
+            print("\n### Translation QA Findings Summary")
+            print(f"**Passed Checks:** {report.summary['passed']}")
+            print(f"**Total Findings:** {report.summary['findings_count']} (Errors: {report.summary['error_count']}, Warnings: {report.summary['warning_count']})\n")
+            
+            if report.findings:
+                print("| Chapter | Type | Severity | Finding Details |")
+                print("| :--- | :--- | :--- | :--- |")
+                for f in report.findings:
+                    msg = f.message
+                    if f.details and "snippet" in f.details:
+                        msg += f" Context: `{f.details['snippet']}`"
+                    print(f"| {f.chapter_id} | {f.finding_type.value} | {f.severity} | {msg} |")
+                print()
+            else:
+                print("✨ No issues found! Workspace is ready for approval.\n")
+                
+            result = OperationResult(
+                status=OperationStatus.OK if report.summary['passed'] else OperationStatus.BLOCKED,
+                reason=f"QA check completed with {report.summary['findings_count']} findings",
+                report_paths=[str(qa_report_path.relative_to(args.workspace.resolve()).as_posix())],
+            )
+        except Exception as e:
+            result = OperationResult(
+                status=OperationStatus.ERROR,
+                reason=f"Check translation failed: {e}",
+            )
+    elif args.command == "approve-qa":
+        from dich_truyen_agent.qa import run_qa_check
+        from dich_truyen_agent.storage import load_yaml_model
+        
+        try:
+            paths = workspace_paths(args.workspace.parent, args.workspace.name)
+            qa_report_path = paths.reports / "qa-report.yaml"
+            
+            # Load or run QA check
+            if qa_report_path.is_file():
+                from dich_truyen_agent.models import QAReport
+                report = load_yaml_model(qa_report_path, QAReport)
+            else:
+                report = run_qa_check(args.workspace)
+                atomic_write_yaml(qa_report_path, report)
+                
+            if report.summary["error_count"] > 0:
+                result = OperationResult(
+                    status=OperationStatus.BLOCKED,
+                    reason=f"QA approval blocked: workspace contains {report.summary['error_count']} critical errors. Run main.py check-translation for details.",
+                    report_paths=[str(qa_report_path.relative_to(args.workspace.resolve()).as_posix())],
+                )
+            else:
+                # Evidence hashing: all translation files in Chapters catalog
+                catalog = load_yaml_model(paths.chapters, ChapterCatalog)
+                evidence = [str(qa_report_path.relative_to(args.workspace.resolve()).as_posix())]
+                for entry in catalog.chapters:
+                    trans_file = paths.translations / entry.translation_filename
+                    if trans_file.is_file():
+                        evidence.append(str(trans_file.relative_to(args.workspace.resolve()).as_posix()))
+                        
+                result = approve_checkpoint(
+                    workspace_root=args.workspace,
+                    checkpoint_type=CheckpointType.QA_APPROVED,
+                    report_path=str(qa_report_path.relative_to(args.workspace.resolve()).as_posix()),
+                    evidence_paths=evidence,
+                    scope=ApprovalScope.FULL if report.summary["findings_count"] == 0 else ApprovalScope.PARTIAL,
+                )
+        except Exception as e:
+            result = OperationResult(
+                status=OperationStatus.ERROR,
+                reason=f"QA approval failed: {e}",
             )
     else:
         raise ValueError(f"unsupported command: {args.command}")
