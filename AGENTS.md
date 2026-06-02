@@ -38,7 +38,7 @@ Antigravity agents must run the following skills and commands to transition the 
 
 ### Phase 2: Crawling & Checkpoint Approval
 * **Responsibility**: Crawl Chinese chapters and secure a `crawl-approved` checkpoint.
-* **Skill Guide**: [crawl-book SKILL.md](file:///d:/latuan/Programming/dich-truyen-agent/.agent/skills/crawl-book/SKILL.md)
+* **Skill Guide**: [crawl-book SKILL.md](.agent/skills/crawl-book/SKILL.md)
 * **Approving Crawl**:
   ```powershell
   uv run python main.py approve-crawl --workspace books/<book-slug>
@@ -46,11 +46,11 @@ Antigravity agents must run the following skills and commands to transition the 
 
 ### Phase 3: Sequential Translation & Subagent Isolation
 * **Responsibility**: Translate chapters sequentially in order using context-isolated subagents to preserve main agent context token efficiency.
-* **Skill Guide**: [translate-book SKILL.md](file:///d:/latuan/Programming/dich-truyen-agent/.agent/skills/translate-book/SKILL.md)
+* **Skill Guide**: [translate-book SKILL.md](.agent/skills/translate-book/SKILL.md)
 
 ### Phase 4: Quality Assurance & QA Approval
 * **Responsibility**: Scan translation outputs for errors (residue, formatting, length anomalies) and approve.
-* **Skill Guide**: [check-translation SKILL.md](file:///d:/latuan/Programming/dich-truyen-agent/.agent/skills/check-translation/SKILL.md)
+* **Skill Guide**: [check-translation SKILL.md](.agent/skills/check-translation/SKILL.md)
 * **Approving QA**:
   ```powershell
   uv run python main.py approve-qa --workspace books/<book-slug>
@@ -58,7 +58,7 @@ Antigravity agents must run the following skills and commands to transition the 
 
 ### Phase 5: Ebook and Derivative Export
 * **Responsibility**: Run EPUBCheck and compile the book into canonical EPUB and optional formats (AZW3, MOBI, PDF).
-* **Skill Guide**: [export-book SKILL.md](file:///d:/latuan/Programming/dich-truyen-agent/.agent/skills/export-book/SKILL.md)
+* **Skill Guide**: [export-book SKILL.md](.agent/skills/export-book/SKILL.md)
 
 ---
 
