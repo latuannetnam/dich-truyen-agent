@@ -31,10 +31,17 @@ Antigravity agents must run the following skills and commands to transition the 
 
 ### Phase 1: Setup & Initialization
 * **Responsibility**: Initialize a clean book directory and build Pydantic schemas.
+* **Retrieve Metadata**: To prevent request blocking/security issues on target sites, explicitly fetch the page content via the terminal using a Python script with custom browser-like headers and the appropriate site encoding (e.g., `gbk` or `utf-8`) instead of built-in URL fetch tools:
+  ```powershell
+  $env:PYTHONUTF8=1
+  uv run python -c "import httpx; from bs4 import BeautifulSoup; r = httpx.get('<source-url>', headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'}, follow_redirects=True, timeout=15); html = r.content.decode('gbk', errors='ignore'); soup = BeautifulSoup(html, 'lxml'); print('Title:', soup.title.string.strip() if soup.title else None); print('H1:', soup.find('h1').text.strip() if soup.find('h1') else None); import re; author = re.search(r'\u4f5c\u8005\uff1a([^\r\n\xa0\u3000]+)', soup.get_text()); print('Author:', author.group(1).strip() if author else None)"
+  ```
 * **Entry Point**: Run the CLI setup:
   ```powershell
   uv run python main.py init-book --slug <book-slug> --title "<title>" --source-url "<source-url>" [--author "<author>"]
   ```
+
+
 
 ### Phase 2: Crawling & Checkpoint Approval
 * **Responsibility**: Crawl Chinese chapters and secure a `crawl-approved` checkpoint.
