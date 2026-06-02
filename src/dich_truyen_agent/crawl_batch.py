@@ -108,9 +108,18 @@ async def crawl_book(
 
     # 2. Workspace Initialization / Resume
     is_new = not paths.root.exists()
+    has_empty_catalog = False
+    if not is_new:
+        try:
+            temp_catalog = load_yaml_model(paths.chapters, ChapterCatalog)
+            if not temp_catalog.chapters:
+                has_empty_catalog = True
+        except Exception:
+            has_empty_catalog = True
+
     try:
-        if is_new:
-            # For new book, we fetch index to build catalog & metadata
+        if is_new or has_empty_catalog:
+            # For new book or empty catalog, we fetch index to build catalog & metadata
             try:
                 raw_bytes, http_charset = await crawler.fetch(source_url)
             except Exception as e:
@@ -141,36 +150,49 @@ async def crawl_book(
                     reason=f"catalog discovery blocked: {findings['blockers']}",
                 )
 
-            # Extract book title automatically
-            soup = BeautifulSoup(html_content, "lxml")
-            title_tag = soup.find("title")
-            title = title_tag.get_text().strip() if title_tag else book_slug
-            title = re.split(r'[-_|_]|–', title)[0].strip()
-
-            metadata = BookMetadata(
-                book_slug=book_slug,
-                source_url=source_url,
-                title=title,
-                author="Unknown",
-            )
             catalog = to_chapter_catalog(discovered)
 
-            # Setup style path
-            style_path = None
-            if style_name:
-                style_path = project_root / "templates" / "styles" / f"{style_name}.yaml"
-                if not style_path.exists():
-                    style_path = project_root / "templates" / "styles" / f"{style_name}"
-            style = load_selected_style(project_root, style_path)
+            if is_new:
+                # Extract book title automatically
+                soup = BeautifulSoup(html_content, "lxml")
+                title_tag = soup.find("title")
+                title = title_tag.get_text().strip() if title_tag else book_slug
+                title = re.split(r'[-_|_]|–', title)[0].strip()
 
-            init_res = initialize_workspace(books_root, metadata, catalog, style)
-            if init_res.status is OperationStatus.BLOCKED:
-                await crawler.close()
-                return init_res
+                metadata = BookMetadata(
+                    book_slug=book_slug,
+                    source_url=source_url,
+                    title=title,
+                    author="Unknown",
+                )
 
-            # Install profile locally
-            snapshot_local = paths.root / "crawl-profile.yaml"
-            atomic_write_yaml(snapshot_local, profile_source.profile)
+                # Setup style path
+                style_path = None
+                if style_name:
+                    style_path = project_root / "templates" / "styles" / f"{style_name}.yaml"
+                    if not style_path.exists():
+                        style_path = project_root / "templates" / "styles" / f"{style_name}"
+                style = load_selected_style(project_root, style_path)
+
+                init_res = initialize_workspace(books_root, metadata, catalog, style)
+                if init_res.status is OperationStatus.BLOCKED:
+                    await crawler.close()
+                    return init_res
+
+                # Install profile locally
+                snapshot_local = paths.root / "crawl-profile.yaml"
+                atomic_write_yaml(snapshot_local, profile_source.profile)
+            else:
+                # Update existing workspace catalog and state
+                state = BookState(
+                    chapters=[ChapterState(chapter_id=chapter.chapter_id) for chapter in catalog.chapters]
+                )
+                atomic_write_yaml(paths.chapters, catalog)
+                atomic_write_yaml(paths.state, state)
+                # Install profile locally if not present
+                snapshot_local = paths.root / "crawl-profile.yaml"
+                if not snapshot_local.exists():
+                    atomic_write_yaml(snapshot_local, profile_source.profile)
 
         else:
             # Existing workspace check

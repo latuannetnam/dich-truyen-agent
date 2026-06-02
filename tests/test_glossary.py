@@ -283,6 +283,8 @@ def test_real_book_glossary_lifecycle():
     import shutil
     
     real_book_root = Path("books/jian-lai-phase2-check")
+    if not real_book_root.is_dir():
+        pytest.skip("books/jian-lai-phase2-check not found on disk")
     paths = workspace_paths(Path("books"), "jian-lai-phase2-check")
     
     # 1. Verify inspect_workspace succeeds initially on real book
