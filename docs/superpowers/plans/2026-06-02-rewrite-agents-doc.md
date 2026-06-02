@@ -1,3 +1,25 @@
+# Rewrite AGENTS.md Implementation Plan
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+
+**Goal:** Rewrite `AGENTS.md` to optimize for agent-native translation orchestration, removing all unrelated developer stacks, GSD workflow instructions, and empty conventions placeholders.
+
+**Architecture:** Replace the entire contents of `AGENTS.md` with a high-level lifecycle diagram, a registry mapping workspace phases to their respective Antigravity skills, and global execution guardrails.
+
+**Tech Stack:** Markdown
+
+---
+
+### Task 1: Update AGENTS.md File
+
+**Files:**
+- Modify: `AGENTS.md`
+
+- [ ] **Step 1: Replace contents of AGENTS.md with the streamlined orchestration guide**
+
+Create the content for `AGENTS.md` exactly as follows:
+
+```markdown
 # Dich Truyen Agent - Agent Orchestration Guide
 
 This document defines the agent-native orchestration workflow for translating Chinese novels into Vietnamese. It acts as the high-level playbook for Antigravity agents to coordinate the crawl, translation, quality assurance, and export pipeline.
@@ -38,7 +60,7 @@ Antigravity agents must run the following skills and commands to transition the 
 
 ### Phase 2: Crawling & Checkpoint Approval
 * **Responsibility**: Crawl Chinese chapters and secure a `crawl-approved` checkpoint.
-* **Skill Guide**: [crawl-book SKILL.md](file:///d:/latuan/Programming/dich-truyen-agent/.agent/skills/crawl-book/SKILL.md)
+* **Skill Guide**: [.agent/skills/crawl-book/SKILL.md](file:///.agent/skills/crawl-book/SKILL.md)
 * **Approving Crawl**:
   ```powershell
   uv run python main.py approve-crawl --workspace books/<book-slug>
@@ -46,11 +68,11 @@ Antigravity agents must run the following skills and commands to transition the 
 
 ### Phase 3: Sequential Translation & Subagent Isolation
 * **Responsibility**: Translate chapters sequentially in order using context-isolated subagents to preserve main agent context token efficiency.
-* **Skill Guide**: [translate-book SKILL.md](file:///d:/latuan/Programming/dich-truyen-agent/.agent/skills/translate-book/SKILL.md)
+* **Skill Guide**: [.agent/skills/translate-book/SKILL.md](file:///.agent/skills/translate-book/SKILL.md)
 
 ### Phase 4: Quality Assurance & QA Approval
 * **Responsibility**: Scan translation outputs for errors (residue, formatting, length anomalies) and approve.
-* **Skill Guide**: [check-translation SKILL.md](file:///d:/latuan/Programming/dich-truyen-agent/.agent/skills/check-translation/SKILL.md)
+* **Skill Guide**: [.agent/skills/check-translation/SKILL.md](file:///.agent/skills/check-translation/SKILL.md)
 * **Approving QA**:
   ```powershell
   uv run python main.py approve-qa --workspace books/<book-slug>
@@ -58,7 +80,7 @@ Antigravity agents must run the following skills and commands to transition the 
 
 ### Phase 5: Ebook and Derivative Export
 * **Responsibility**: Run EPUBCheck and compile the book into canonical EPUB and optional formats (AZW3, MOBI, PDF).
-* **Skill Guide**: [export-book SKILL.md](file:///d:/latuan/Programming/dich-truyen-agent/.agent/skills/export-book/SKILL.md)
+* **Skill Guide**: [.agent/skills/export-book/SKILL.md](file:///.agent/skills/export-book/SKILL.md)
 
 ---
 
@@ -90,3 +112,13 @@ To ensure high-quality translations, stability, and token efficiency, the follow
   ```powershell
   $env:UV_CACHE_DIR="$PWD\.uv-cache"
   ```
+```
+
+- [ ] **Step 2: Commit the changes**
+
+Run command:
+```powershell
+git add AGENTS.md docs/superpowers/specs/2026-06-02-rewrite-agents-doc-design.md
+git commit -m "docs: rewrite AGENTS.md for agent-native translation orchestration"
+```
+Expected output: successful git commit.
