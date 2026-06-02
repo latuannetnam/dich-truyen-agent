@@ -9,7 +9,7 @@ metadata:
 
 ## Overview
 
-Translate crawled and approved Chinese chapters sequentially using context-isolated translator subagents. The Main Agent acts as a lightweight coordinator, looping through pending chapters, querying translation contexts, dispatching specialized subagents to perform Socratic translation, and atomically promoting the outputs. This prevents raw text files or massive translations from flooding the Main Agent's context window, ensuring high token efficiency and consistent pronoun (xưng hô) continuity.
+Translate crawled and approved Chinese chapters sequentially using context-isolated translator subagents. The Main Agent acts as a lightweight coordinator, looping through pending chapters, querying translation contexts, dispatching specialized subagents to perform translation using the native `invoke_subagent` tool, and atomically promoting the outputs. This prevents raw text files or massive translations from flooding the Main Agent's context window, ensuring high token efficiency and consistent pronoun (xưng hô) continuity.
 
 > [!IMPORTANT]
 > **Context Protection & Sequential Execution:**
@@ -20,40 +20,64 @@ Translate crawled and approved Chinese chapters sequentially using context-isola
 
 ## Core Workflow
 
-### Step 1: Verify the Crawl gate Checkpoint
+### Step 1: Verify the Crawl Gate Checkpoint
 Enforce that the workspace has an active and valid `crawl-approved` checkpoint before proceeding:
 ```bash
+$env:PYTHONUTF8=1
 uv run python main.py check-gate --workspace books/<book-slug> --type crawl-approved
 ```
-If this command blocks, stop the workflow and guide the user to review and approve the crawled raw contents first.
+If this command blocks or fails, stop the workflow and guide the user to review and approve the crawled raw contents first.
 
 ### Step 2: Query Sequential Progress and Next Target
 Check overall translation progress and fetch the exact next pending chapter ID:
 ```bash
+$env:PYTHONUTF8=1
 uv run python main.py show-translation-progress --workspace books/<book-slug>
 ```
-- **If completed:** If the response says `"all chapter translations completed"`, print the progress and announce successful book completion!
-- **If blocked:** If the response is blocked due to preceding ordering gaps, stop and report the gap to the user for repair.
-- **If pending:** Parse the JSON payload from the command's reason field to get:
-  - `chapter_id`: 1-based sequential integer
-  - `slug`: chapter URL friendly identifier
-  - `original_title`: raw Chinese title
+* **If completed:** If the response says `"all chapter translations completed"`, print the progress and announce successful book completion!
+* **If blocked:** If the response is blocked due to preceding ordering gaps, stop and report the gap to the user for repair.
+* **If pending:** Parse the JSON payload from the command's reason field to get:
+  * `chapter_id`: 1-based sequential integer
+  * `slug`: chapter URL friendly identifier
+  * `original_title`: raw Chinese title
 
 ### Step 3: Fetch Translation Context
-Prepare the absolute file paths and continuity indicators for the current chapter:
+Prepare the context paths and continuity indicators for the current chapter:
 ```bash
+$env:PYTHONUTF8=1
 uv run python main.py prepare-translation-context --workspace books/<book-slug> --chapter-id <chapter_id>
 ```
 Parse the JSON payload from the reason field to retrieve:
-- `raw_path`: absolute path to the raw Chinese file
-- `style_path`: absolute path to the style guidelines (`style.yaml`)
-- `glossary_path`: absolute path to the dictionary database (`glossary.yaml`)
-- `prev_translation_path`: absolute path to Chapter `N-1`'s translation, or `null` if fallback is active (e.g. Chapter 1 or missing files)
-- `is_fallback`: `true`/`false`
-- `fallback_reason`: description if fallback is active
+* `raw_path`: path to the raw Chinese file
+* `style_path`: path to the style guidelines (`style.yaml`)
+* `glossary_path`: path to the dictionary database (`glossary.yaml`)
+* `prev_translation_path`: path to Chapter `N-1`'s translation, or `null` if fallback is active (e.g. Chapter 1 or missing files)
+* `is_fallback`: `true`/`false`
+* `fallback_reason`: description if fallback is active
 
-### Step 4: Spawn the Isolation Subagent
-Spawn a specialized translation subagent using the `invoke_subagent` (or equivalent Antigravity subagent invocation) tool using this exact prompt payload, replacing bracketed parameters `[...]` with the resolved context paths:
+### Step 4: Resolve Absolute Paths
+Before invoking the subagent, you must construct the absolute file paths for all input and output files by resolving their paths relative to the project root (using Python or PowerShell). This ensures the subagent can load and write files reliably regardless of its execution directory.
+
+For example, staging paths should resolve to:
+* `staged_txt`: `[Absolute path to staging/chuong-{chapter_id:04d}-staged.txt]`
+* `staged_yaml`: `[Absolute path to staging/chuong-{chapter_id:04d}-proposals.yaml]`
+
+### Step 5: Spawn the Isolation Subagent Natively
+Spawn a specialized translation subagent natively using the `invoke_subagent` tool with this exact structure:
+
+```json
+invoke_subagent({
+  "Subagents": [
+    {
+      "Prompt": "[Subagent Prompt]",
+      "Role": "Chinese-to-Vietnamese Xianxia/Tu Chan Translator",
+      "TypeName": "translator"
+    }
+  ]
+})
+```
+
+The prompt payload passed to the subagent must match the following template, replacing all bracketed `[Absolute Path to ...]` placeholders with the resolved absolute paths:
 
 ```markdown
 You are a highly specialized Chinese-to-Vietnamese novel translator specializing in the **Tiên Hiệp (Xianxia) / Tu Chân (Cultivation)** genre. Your task is to produce a high-quality, professional, and elegant Vietnamese translation of the assigned chapter in literary context.
@@ -79,13 +103,34 @@ You must read the following files to get all necessary context, guidelines, and 
      * Ensure the narrative tone matches the 'archaic' style defined in `style.yaml`.
 4. **Adhere to the Lexical Sandbox Rule:**
    * **Strict Constraint:** DO NOT leak any English conjunctions, prepositions, or helper words into the translated Vietnamese output.
-   * Before writing the file, you must explicitly scan your entire draft translation for common leaked English words (such as: `but`, `here`, `now`, `okay`, `the`, `and`, `or`, `while`, `before`, `after`, `of`, `to`, `in`, `on`, `at`, `for`, `with`). If any are found, immediately replace them with their proper Vietnamese equivalents.
-   * **No Chinese Residue:** The translated narrative body MUST consist solely of natural Vietnamese prose. You must NEVER output original Chinese characters, bilingual annotations (e.g., `中文 (tiếng Việt)`), or translator notes inside the body of `chuong-{chapter_id:04d}-staged.txt`. All Chinese term proposals must be strictly isolated to the separate `proposals.yaml` file.
+   * **Programmatic Scan:** Before writing the file, you must explicitly scan your entire draft translation for common leaked English words. If any are found, replace them with their proper Vietnamese equivalents using this table:
+
+   | Banned English Word | Vietnamese Equivalent | Notes |
+   | :--- | :--- | :--- |
+   | but | nhưng | |
+   | and | và | |
+   | or | hoặc | |
+   | while | trong khi | |
+   | before | trước khi | |
+   | after | sau khi | |
+   | of | của | |
+   | to | đến / cho | depends on context |
+   | in | trong | |
+   | on | trên | |
+   | at | tại | |
+   | for | cho / vì | depends on context |
+   | with | với | |
+   | the | *(omit article)* | Vietnamese has no articles |
+   | here | đây | |
+   | now | bây giờ | |
+   | okay | được / OK | |
+
+   * **No Chinese Residue:** The translated narrative body MUST consist solely of natural Vietnamese prose. You must NEVER output original Chinese characters, bilingual annotations, or translator notes inside the body of the staging translation file. All Chinese term proposals must be strictly isolated to the separate proposals YAML file.
 5. **Write Target Files:** 
    * **Staged Translation:** Write the complete translated Vietnamese text directly to `[Absolute Path to staging/chuong-{chapter_id:04d}-staged.txt]`.
      * **Title Formatting:** The very first line of this file must contain the translated chapter title, formatted exactly as `# [title_vi]` (e.g., `# Chương 1715 Thiên Ma Truyền Thuyết`).
      * Ensure there is a blank line immediately after this first line.
-   * **Staged Glossary Proposals:** If you find new Chinese names, factions, items, or terms that are missing from `glossary.yaml` and had to be translated, write a staged proposals YAML file directly to `[Absolute Path to staging/chuong-{chapter_id:04d}-proposals.yaml]` containing structured dictionary entries:
+   * **Staged Glossary Proposals:** If you find new Chinese names, factions, items, or terms that are missing from the glossary and had to be translated, write a staged proposals YAML file directly to `[Absolute Path to staging/chuong-{chapter_id:04d}-proposals.yaml]` containing structured dictionary entries:
      ```yaml
      [Chinese Term]:
        translation: "[Vietnamese Mapping]"
@@ -98,7 +143,8 @@ You must read the following files to get all necessary context, guidelines, and 
    * No raw Chinese remains.
    * The Lexical Sandbox Rule is fully respected.
 
-Return a JSON block summarizing:
+Return ONLY a clean JSON block summarizing:
+```json
 {
   "status": "success",
   "chapter_id": [Chapter ID],
@@ -107,24 +153,49 @@ Return a JSON block summarizing:
   "proposals_count": [Count]
 }
 ```
+If an error occurs or the translation cannot be completed, return:
+```json
+{
+  "status": "error",
+  "chapter_id": [Chapter ID],
+  "title_vi": null,
+  "character_count": 0,
+  "proposals_count": 0,
+  "error_message": "[Error description]"
+}
+```
+```
 
-### Step 5: Atomically Promote the Output
-Once the subagent returns a successful JSON status, invoke the CLI promotion subcommand:
+### Step 6: Lightweight Staging Verification
+Once the subagent returns a successful status, the Main Agent must verify the file was written correctly. To prevent context window overload:
+* Run `view_file` reading **only the first 3 lines** of the staged file `books/<book-slug>/staging/chuong-{chapter_id:04d}-staged.txt`.
+* Confirm that the first line contains the correct `# [title_vi]` format.
+* Confirm that the character count matches expectations and the file is not empty.
+
+### Step 7: Atomically Promote the Output
+Once the staging files are verified, invoke the CLI promotion subcommand:
 ```bash
+$env:PYTHONUTF8=1
 uv run python main.py promote-chapter --workspace books/<book-slug> --chapter-id <chapter_id>
 ```
-Confirm the command returns `status: ok`. This validates the staging files, moves the translation atomically, merges the glossary proposals, updates `state.yaml` with hashes, and cleans the staging files.
+Confirm the command returns `status: ok`. This validates the staging files, moves the translation atomically to the `translations/` directory, merges any staged glossary proposals, updates `state.yaml` with hashes, and cleans up the staging files.
 
-### Step 6: Retries, Backoffs, and Resumption
-- **Transient Failures:** If a subagent call fails or the promotion is blocked, retry the chapter up to **3 times**. Run a polite backoff before each retry.
-- **Exhausted Retries:** If a chapter fails on all 3 attempts, halt execution immediately. Print a detailed error report pointing to `reports/results/promote-chapter.yaml` or staging logs. Leave the workspace clean at the last successful checkpoint. This allows the user to inspect, manually edit the staged text or glossary, and run the skill again to resume safely from the failed chapter.
-- **Loop:** If promotion is successful, repeat from Step 2.
+### Step 8: Retries, Backoffs, and Resumption
+* **Transient Failures:** If the subagent fails or the promotion is blocked, retry the chapter up to **3 times**. Run a polite backoff before each retry.
+* **Exhausted Retries:** If a chapter fails all 3 attempts, halt execution immediately. Print a detailed error report. Leave the workspace clean at the last successful checkpoint so that the run can be resumed later.
+* **Loop:** If promotion is successful, repeat from Step 2.
 
 ---
 
 ## Common Pitfalls
-* **Context Overload:** Reading raw or complete translations in your main session immediately floods your token window. Keep all file-level reads locked inside the isolation subagent.
-* **Leaked Conjunctions:** Forgetting the Lexical Sandbox check, which introduces modern English conjunctions ("but", "while") into classical XianxiaTu Chân Vietnamese prose.
-* **Proposals Format:** Generating a flat key-value dictionary for proposals instead of the structured schema containing translation, category, and source. Always follow the Pydantic structured glossary contract.
 
-<!-- not implemented by Phase 1 books/<book-slug>/ -->
+* **Main Agent Context Overload:** Reading raw or complete translations in your main session immediately floods your token window. Keep all file-level reads locked inside the isolation subagent.
+* **Bypassing Lexical Sandbox:** Leaving modern English conjunctions ("but", "while") or articles ("the") in classical Xianxia/Tu Chan Vietnamese prose. Always enforce the Lexical Sandbox mapping table check.
+* **Incorrect Metadata Updates:** Trying to manually search/replace inside `book.json` or `state.yaml`. Always use the CLI commands (`promote-chapter`, etc.) to update metadata.
+
+<!--
+Honesty contracts for tests:
+books/<book-slug>/
+reports/results/
+not implemented by Phase 1
+-->
