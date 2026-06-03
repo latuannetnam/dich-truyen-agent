@@ -16,6 +16,10 @@ Translate crawled and approved Chinese chapters sequentially using context-isola
 > Do **NOT** read raw source Chinese files or complete Vietnamese chapters into your own Main Agent session. Spawning subagents keeps your context window clear and allows translating hundreds of chapters continuously. 
 > Chapters are translated **strictly in order** so that each chapter `N` can receive the completed Vietnamese translation of chapter `N-1` as narrative context.
 
+> [!WARNING]
+> **Strict External API Prohibition:**
+> You are strictly forbidden from using external LLM APIs (e.g., OpenRouter, OpenAI, Gemini) via Python scripts, curl, or any other external tool to perform the translation. You MUST only use the native Antigravity `invoke_subagent` capability as specified in this document.
+
 ---
 
 ## Core Workflow
@@ -63,7 +67,7 @@ For example, staging paths should resolve to:
 * `staged_yaml`: `[Absolute path to staging/chuong-{chapter_id:04d}-proposals.yaml]`
 
 ### Step 5: Spawn the Isolation Subagent Natively
-Spawn a specialized translation subagent natively using the `invoke_subagent` tool with this exact structure:
+Spawn a specialized translation subagent natively using the `invoke_subagent` tool. Do NOT attempt to run external python scripts or curl commands targeting third-party LLM APIs (OpenRouter, OpenAI, etc.). Use exactly this structure:
 
 ```json
 invoke_subagent({
@@ -192,6 +196,7 @@ Confirm the command returns `status: ok`. This validates the staging files, move
 * **Main Agent Context Overload:** Reading raw or complete translations in your main session immediately floods your token window. Keep all file-level reads locked inside the isolation subagent.
 * **Bypassing Lexical Sandbox:** Leaving modern English conjunctions ("but", "while") or articles ("the") in classical Xianxia/Tu Chan Vietnamese prose. Always enforce the Lexical Sandbox mapping table check.
 * **Incorrect Metadata Updates:** Trying to manually search/replace inside `book.json` or `state.yaml`. Always use the CLI commands (`promote-chapter`, etc.) to update metadata.
+* **Using External LLM APIs:** Attempting to use Python or shell scripts to send raw text to external APIs (OpenAI, OpenRouter, etc.) instead of spawning a subagent. This is strictly prohibited and bypasses the native orchestration framework. Always use `invoke_subagent`.
 
 <!--
 Honesty contracts for tests:
