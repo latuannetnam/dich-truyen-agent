@@ -1,0 +1,12 @@
+{
+  "PreToolUse": [
+    {
+      "matcher": "run_command",
+      "hooks": [
+        {
+          "command": "python .agents/hooks/check_external_llm.py"
+        }
+      ]
+    }
+  ]
+}
