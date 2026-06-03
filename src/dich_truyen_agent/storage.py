@@ -10,7 +10,20 @@ from pydantic import BaseModel
 
 from dich_truyen_agent.paths import temp_sibling_path
 
+import time
+
 ModelT = TypeVar("ModelT", bound=BaseModel)
+
+
+def _replace_with_retry(src: Path | str, dst: Path | str, max_retries: int = 10, delay: float = 0.1) -> None:
+    for i in range(max_retries):
+        try:
+            os.replace(src, dst)
+            return
+        except PermissionError:
+            if i == max_retries - 1:
+                raise
+            time.sleep(delay)
 
 
 def load_yaml_model(path: Path, model_type: type[ModelT]) -> ModelT:
@@ -33,7 +46,7 @@ def atomic_write_yaml(path: Path, model: ModelT) -> None:
         stream.flush()
         os.fsync(stream.fileno())
     load_yaml_model(temp_path, type(model))
-    os.replace(temp_path, path)
+    _replace_with_retry(temp_path, path)
 
 
 def atomic_write_text(path: Path, text: str) -> None:
@@ -43,7 +56,7 @@ def atomic_write_text(path: Path, text: str) -> None:
         stream.write(text)
         stream.flush()
         os.fsync(stream.fileno())
-    os.replace(temp_path, path)
+    _replace_with_retry(temp_path, path)
 
 
 def sha256_file(path: Path) -> str:
