@@ -96,3 +96,31 @@ def test_broad_allow_base_first(bash_rules):
         "opencode evaluates the LAST matching rule, so broad rules must come FIRST."
     )
     assert bash_rules["*"] == "allow", "Base `*` rule must be 'allow'"
+
+
+# Tool-level permission contract per spec Section 7.
+# These are siblings of `bash` inside the `permission` object.
+EXPECTED_TOOL_PERMS = {
+    "edit": "allow",
+    "read": "allow",
+    "glob": "allow",
+    "grep": "allow",
+    "webfetch": "ask",
+    "websearch": "ask",
+}
+
+
+@pytest.mark.parametrize("tool,expected", list(EXPECTED_TOOL_PERMS.items()))
+def test_tool_level_permission(cfg, tool, expected):
+    """Tool-level permissions must match spec Section 7 exactly.
+
+    A silent regression here (e.g., webfetch flipped to "allow") would
+    disable the user-prompt safety the spec mandates, and the bash-rule
+    tests do not cover this.
+    """
+    perm = cfg["permission"]
+    assert tool in perm, f"permission.{tool} is missing"
+    actual = perm[tool]
+    assert actual == expected, (
+        f"permission.{tool} must be {expected!r} per spec Section 7, got {actual!r}"
+    )
