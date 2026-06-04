@@ -1,6 +1,6 @@
 ---
 name: oc-translate-book
-description: "Use when translating an approved Chinese novel workspace sequentially into Vietnamese, chapter by chapter. OpenCode-native mirror of the translate-book skill; uses task({subagent_type:'oc-translator'}) for subagent dispatch and embeds the sequential loop in the skill body (no Workflow tool). Triggered by phrases like 'translate book', 'translate next chapters', 'continue translation', 'resume translating <book>', or when a workspace has a valid crawl-approved checkpoint but pending Vietnamese chapters."
+description: "Use when translating an approved Chinese novel workspace sequentially into Vietnamese, chapter by chapter. OpenCode-native mirror of the translate-book skill; uses task({subagent_type:\"oc-translator\"}) for subagent dispatch and embeds the sequential loop in the skill body (no Workflow tool). Triggered by phrases like 'translate book', 'translate next chapters', 'continue translation', 'resume translating <book>', or when a workspace has a valid crawl-approved checkpoint but pending Vietnamese chapters."
 ---
 
 # OC-Translate Book (Sequential Subagent Orchestration — OpenCode)
@@ -74,10 +74,10 @@ task(
 You are translating chapter <chapter_id> of a Chinese xianxia novel into Vietnamese.
 
 ## Inputs (absolute paths)
-1. **Raw Chinese Text:** Read `<raw_path>`
-2. **Style Guidelines:** Read `<style_path>` (archaic tone)
-3. **Glossary:** Read `<glossary_path>` (glossary mappings override your own rendering)
-4. **Previous Chapter Context:** Read `<prev_translation_path>` for pronoun (xưng hô) continuity.
+1. **Raw Chinese Text:** read `<raw_path>`
+2. **Style Guidelines:** read `<style_path>` (archaic tone)
+3. **Glossary:** read `<glossary_path>` (glossary mappings override your own rendering)
+4. **Previous Chapter Context:** read `<prev_translation_path>` for pronoun (xưng hô) continuity.
    (If null: this is Chapter 1 or a fallback — reason: <fallback_reason>. Translate without predecessor context.)
 
 ## Output paths (absolute)
