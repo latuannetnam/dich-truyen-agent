@@ -97,3 +97,15 @@ To ensure high-quality translations, stability, and token efficiency, the follow
   ```powershell
   $env:UV_CACHE_DIR="$PWD\.uv-cache"
   ```
+
+## OpenCode-Native Skill Variants
+
+For users running the **OpenCode** runtime (vs. Claude Code or Antigravity), parallel `oc-*` skills live in `.opencode/skill/`:
+
+- `oc-crawl-book` — equivalent of `crawl-book`, uses the `bash` tool
+- `oc-translate-book` — equivalent of `translate-book`, uses `task({subagent_type:"oc-translator"})` and embeds the sequential loop in the skill body (no `Workflow` tool)
+- `oc-check-translation` — equivalent of `check-translation`
+- `oc-export-book` — equivalent of `export-book`
+- `oc-translator` (subagent) — equivalent of `.claude/agents/translator.md`
+
+The `.agent/skills/*` and `.claude/skills/*` versions are NOT modified. Both runtimes continue to work. See `opencode.json` `permission.bash` for the OpenCode-specific external-LLM guardrail (declarative, command-string only — Python file-content scan from the original hook is dropped).
