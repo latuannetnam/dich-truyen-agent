@@ -1,0 +1,30 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "plugin": ["superpowers@git+https://github.com/obra/superpowers.git"],
+  "permission": {
+    "bash": {
+      "*": "allow",
+      "rm -rf /*": "deny",
+      "*api.openai.com*": "deny",
+      "*openrouter.ai*": "deny",
+      "*api.anthropic.com*": "deny",
+      "*generativelanguage.googleapis.com*": "deny",
+      "*api.deepseek.com*": "deny",
+      "*OPENAI_API_KEY*": "deny",
+      "*OPENROUTER_API_KEY*": "deny",
+      "*ANTHROPIC_API_KEY*": "deny",
+      "*GEMINI_API_KEY*": "deny",
+      "*DEEPSEEK_API_KEY*": "deny",
+      "*import openai*": "deny",
+      "*import anthropic*": "deny",
+      "*from openai*": "deny",
+      "*from anthropic*": "deny"
+    },
+    "edit": "allow",
+    "read": "allow",
+    "glob": "allow",
+    "grep": "allow",
+    "webfetch": "ask",
+    "websearch": "ask"
+  }
+}
