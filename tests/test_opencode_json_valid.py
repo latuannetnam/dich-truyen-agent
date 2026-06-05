@@ -124,3 +124,59 @@ def test_tool_level_permission(cfg, tool, expected):
     assert actual == expected, (
         f"permission.{tool} must be {expected!r} per spec Section 7, got {actual!r}"
     )
+
+
+# Skills in .agent/, .agents/, .claude/, .codex/ are denied so only the
+# .opencode/skill/ (oc-*) variants remain active for OpenCode.
+DISABLED_FOLDER_SKILLS = [
+    "crawl-book",
+    "translate-book",
+    "check-translation",
+    "export-book",
+    "brainstorming",
+    "writing-plans",
+]
+
+
+@pytest.fixture(scope="module")
+def skill_rules(cfg) -> dict:
+    perm = cfg.get("permission", {})
+    rules = perm.get("skill", {})
+    assert isinstance(rules, dict), "permission.skill must be an object"
+    return rules
+
+
+def test_skill_permission_block_exists(cfg):
+    assert "skill" in cfg["permission"], "permission.skill block missing"
+
+
+def test_skill_broad_allow_base_first(skill_rules):
+    """Mirror the bash rule: broad allow first, then specific denies."""
+    keys = list(skill_rules.keys())
+    assert keys[0] == "*", (
+        f"First skill rule must be `*` (broad allow), got: {keys[0]!r}. "
+        "opencode evaluates the LAST matching rule, so broad rules must come FIRST."
+    )
+    assert skill_rules["*"] == "allow", "Base `*` skill rule must be 'allow'"
+
+
+@pytest.mark.parametrize("skill", DISABLED_FOLDER_SKILLS)
+def test_folder_skill_denied(skill_rules, skill):
+    """Skills in .agent/.agents/.claude/.codex must be denied."""
+    assert skill in skill_rules, f"Skill {skill!r} has no permission rule"
+    assert skill_rules[skill] == "deny", (
+        f"Skill {skill!r} must be 'deny' (lives in a disabled folder), "
+        f"got: {skill_rules[skill]!r}"
+    )
+
+
+def test_oc_skills_not_denied(skill_rules):
+    """The .opencode/skill/ oc-* variants must remain allowed.
+
+    If a future edit broadens the deny list to a wildcard, this catches it
+    before the oc- pipeline silently loses its skills.
+    """
+    for name in ("oc-crawl-book", "oc-translate-book", "oc-check-translation", "oc-export-book"):
+        assert name not in skill_rules or skill_rules[name] != "deny", (
+            f"OpenCode-native skill {name!r} must not be denied"
+        )
