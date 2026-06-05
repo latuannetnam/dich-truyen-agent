@@ -1,22 +1,26 @@
 ---
 name: oc-translate-book
-description: "Use when translating an approved Chinese novel workspace sequentially into Vietnamese, chapter by chapter. OpenCode-native mirror of the translate-book skill; uses task({subagent_type:\"oc-translator\"}) for subagent dispatch and embeds the sequential loop in the skill body (no Workflow tool). Triggered by phrases like 'translate book', 'translate next chapters', 'continue translation', 'resume translating <book>', or when a workspace has a valid crawl-approved checkpoint but pending Vietnamese chapters."
+description: "Use when translating an approved Chinese novel workspace sequentially into Vietnamese, chapter by chapter. OpenCode-native mirror of the translate-book skill; uses task({subagent_type:\"general\"}) with the oc-translator system prompt inlined, and embeds the sequential loop in the skill body (no Workflow tool). Triggered by phrases like 'translate book', 'translate next chapters', 'continue translation', 'resume translating <book>', or when a workspace has a valid crawl-approved checkpoint but pending Vietnamese chapters."
 ---
 
 # OC-Translate Book (Sequential Subagent Orchestration — OpenCode)
 
 ## Overview
 
-Translate crawled and approved Chinese chapters **strictly in sequential order** by dispatching the locked-down `oc-translator` subagent (see `.opencode/agent/oc-translator.md`) one chapter at a time. The Main Agent is a lightweight coordinator: it queries CLI commands, dispatches the subagent via `task()`, verifies the staging output, and atomically promotes the result. Raw text files and full translations never enter the Main Agent's context.
+Translate crawled and approved Chinese chapters **strictly in sequential order** by dispatching the built-in `general` subagent with the translator system prompt inlined (see `.opencode/agent/oc-translator.md` for the canonical prompt body). The Main Agent is a lightweight coordinator: it queries CLI commands, dispatches the subagent via `task()`, verifies the staging output, and atomically promotes the result. Raw text files and full translations never enter the Main Agent's context.
+
+> [!IMPORTANT]
+> **Why `general`, not a custom subagent?**
+> OpenCode Issue #17890 — `model: inherit` in custom (non-native) subagent frontmatter is parsed as `{ providerID: "inherit", modelID: "" }`, producing `ProviderModelNotFoundError`. Only built-in **native** subagents (`general`, `explore`) correctly inherit the parent model. The workaround: dispatch via `general` and inline the oc-translator system prompt in the dispatch body.
 
 > [!IMPORTANT]
 > **Context Protection & Sequential Execution.**
-> Do NOT read raw Chinese files or completed Vietnamese chapters in your own context. The `oc-translator` subagent is the only worker that reads them.
+> Do NOT read raw Chinese files or completed Vietnamese chapters in your own context. The dispatched subagent is the only worker that reads them.
 > Chapters are translated strictly in order — `N+1` starts only after `N` is promoted. No overlap.
 
 > [!WARNING]
 > **External LLM API Prohibition.**
-> Translation must go through `task({subagent_type: "oc-translator", ...})` — never via Python/curl to OpenAI/OpenRouter/Gemini/DeepSeek/Anthropic. The `permission.bash` rules in `opencode.json` block violating bash commands (declarative, command-string only — no .py file-content scan).
+> Translation must go through `task({subagent_type: "general", ...})` with the inlined translator prompt — never via Python/curl to OpenAI/OpenRouter/Gemini/DeepSeek/Anthropic. The `permission.bash` rules in `opencode.json` block violating bash commands (declarative, command-string only — no .py file-content scan).
 
 > [!NOTE]
 > **No `Workflow` tool in OpenCode.**
@@ -57,43 +61,38 @@ The subagent runs with its own cwd, so absolute paths are mandatory. Use Python 
 - `staged_txt`: `<project_root>\books\<book-slug>\staging\chuong-{chapter_id:04d}-staged.txt`
 - `staged_yaml`: `<project_root>\books\<book-slug>\staging\chuong-{chapter_id:04d}-proposals.yaml`
 
-### Step 5 — Dispatch the oc-translator subagent
-The `oc-translator` subagent's system prompt (`.opencode/agent/oc-translator.md`) is the single source of truth for the title rule, lexical sandbox, glossary precedence, archaic tone, no-Chinese-residue rule, and the JSON return contract. Your dispatch prompt only passes per-chapter parameters — do **not** restate the rules.
+### Step 5 — Dispatch via `general` with the translator prompt inlined
+The translator system prompt (`.opencode/agent/oc-translator.md`, body section) is the single source of truth for the title rule, lexical sandbox, glossary precedence, archaic tone, no-Chinese-residue rule, and the JSON return contract. The orchestrator (you) reads the file, inlines the body verbatim into the dispatch prompt, then appends the per-chapter parameters.
+
+**Procedure:**
+1. Read `.opencode/agent/oc-translator.md` (use the `read` tool).
+2. Copy the body (everything after the closing `---` frontmatter on line 21) verbatim into the dispatch prompt.
+3. Append the per-chapter parameter block shown below.
 
 ```python
 task(
-  subagent_type="oc-translator",
+  subagent_type="general",
   description="Translate chapter <chapter_id>",
-  prompt="<see template below>"
-)
-```
+  prompt="""<paste the body of .opencode/agent/oc-translator.md here, verbatim>
 
-**Dispatch prompt template (~20 lines, parameters only):**
+## Per-chapter dispatch parameters (appended by orchestrator)
+- chapter_id = <chapter_id>
+- raw_path = <raw_path>
+- style_path = <style_path>
+- glossary_path = <glossary_path>
+- prev_translation_path = <prev_translation_path>  # null if Chapter 1 or fallback
+- fallback_reason = <fallback_reason>  # "N/A" if not a fallback
+- staged_txt = <staged_txt>
+- staged_yaml = <staged_yaml>
 
-```markdown
-You are translating chapter <chapter_id> of a Chinese xianxia novel into Vietnamese.
-
-## Inputs (absolute paths)
-1. **Raw Chinese Text:** read `<raw_path>`
-2. **Style Guidelines:** read `<style_path>` (archaic tone)
-3. **Glossary:** read `<glossary_path>` (glossary mappings override your own rendering)
-4. **Previous Chapter Context:** read `<prev_translation_path>` for pronoun (xưng hô) continuity.
-   (If null: this is Chapter 1 or a fallback — reason: <fallback_reason>. Translate without predecessor context.)
-
-## Output paths (absolute)
-- staged_txt:  `<staged_txt>`
-- staged_yaml: `<staged_yaml>` (write only if you have new glossary proposals)
-
-## Reminders (full rules in your system prompt)
-- Title: `第[N]章` → `Chương [N]`; Sino-Vietnamese Title Case; single space joiner; no colon/hyphen/brackets.
-- File: line 1 = `# [title_vi]`, line 2 blank, line 3+ body.
-- Lexical Sandbox: scan for banned English helper words per your system prompt table.
-- No Chinese characters in the body. Proposals go ONLY in staged_yaml.
+## Tool allowlist (enforced via prompt — `general` is built-in and has all tools)
+You have access to: `read`, `write`, `glob`, `grep`.
+Do NOT use: `bash`, `webfetch`, `task`, `edit`, `todowrite`, `skill`, `websearch`.
+If a task seems to require a blocked tool, fail with the error JSON block.
 
 ## Return
-Return ONLY the success or error JSON block defined in your system prompt. Nothing else.
-
-chapter_id = <chapter_id>.
+Return ONLY the success or error JSON block defined above. Nothing else."""
+)
 ```
 
 ### Step 6 — Verify staging output (lightweight)
@@ -118,10 +117,11 @@ Confirm `status: ok`. This validates staging, moves the translation into `transl
 
 ## Common Pitfalls
 
-- **Reading raw or completed chapters yourself** — Floods your context. The oc-translator subagent owns all file reads.
-- **Restating translation rules in the dispatch prompt** — Wastes tokens and risks drift from the subagent system prompt. Pass parameters, reference the rules.
+- **Reading raw or completed chapters yourself** — Floods your context. The dispatched subagent owns all file reads.
+- **Restating translation rules in the dispatch prompt** — Wastes tokens and risks drift from the source prompt. Inline `.opencode/agent/oc-translator.md` verbatim; append only the per-chapter parameters.
+- **Forgetting the tool allowlist override** — `general` is built-in and has all tools. The dispatch prompt MUST explicitly forbid `bash`, `webfetch`, `task`, `edit`, `todowrite`, `skill`, `websearch` or the subagent will misuse them.
 - **Manually editing `book.json` or `state.yaml`** — Use the CLI (`promote-chapter`, etc.). Never search/replace metadata by hand.
-- **Calling external LLM APIs** — Strictly prohibited. The `permission.bash` rules block it. Always use `task({subagent_type: "oc-translator", ...})`.
+- **Calling external LLM APIs** — Strictly prohibited. The `permission.bash` rules block it. Always use `task({subagent_type: "general", ...})` with the inlined prompt.
 - **Translating N+1 before N is promoted** — Violates sequential handoff and corrupts pronoun continuity.
 
 <!--

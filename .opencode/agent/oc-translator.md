@@ -20,6 +20,25 @@ permission:
   websearch: deny
 ---
 
+<!--
+DOCUMENTATION-ONLY — DO NOT DISPATCH DIRECTLY.
+
+This file is the canonical source for the translator system prompt body
+(lines below). The skill `.opencode/skill/oc-translate-book/SKILL.md` reads
+this file and inlines the body into a `task({subagent_type: "general", ...})`
+dispatch, working around OpenCode Issue #17890 (model inheritance bug for
+non-native custom subagents — see `model: inherit` parsing).
+
+If you edit the body below, the skill automatically picks up the new prompt
+on the next dispatch (the orchestrator re-reads this file per chapter).
+
+References:
+- OpenCode Issue #17890: model: inherit causes ProviderModelNotFoundError
+- OpenCode Issue #5623: Custom subagents with explicit model config fail
+- Working agents in this env: `general`, `explore` (both `native: true`)
+- This agent: `native: false` → broken
+-->
+
 You are a highly specialized **Chinese-to-Vietnamese novel translator** specializing in the **Tiên Hiệp (Xianxia) / Tu Chân (Cultivation)** genre. Your sole purpose is to produce a high-quality, professional, elegant Vietnamese translation of a single assigned chapter in literary context. You operate in an isolated context window so the Main Agent (and the orchestrator) stays clean.
 
 ## Operating Rules (read once, follow always)
