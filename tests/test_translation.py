@@ -11,14 +11,12 @@ from dich_truyen_agent.models import (
     BookState,
     ChapterCatalog,
     ChapterCatalogEntry,
-    ChapterState,
     CheckpointType,
     OperationStatus,
     StageRecord,
     StageStatus,
     TranslationStyle,
     BookGlossary,
-    GlossaryTerm,
 )
 from dich_truyen_agent.paths import workspace_paths
 from dich_truyen_agent.storage import atomic_write_yaml, load_yaml_model, sha256_file

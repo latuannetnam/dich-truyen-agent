@@ -1,9 +1,7 @@
 from pathlib import Path
 import pytest
 
-from dich_truyen_agent.checkpoints import check_gate, approve_checkpoint
 from dich_truyen_agent.models import (
-    ApprovalScope,
     BookMetadata,
     BookState,
     ChapterCatalog,

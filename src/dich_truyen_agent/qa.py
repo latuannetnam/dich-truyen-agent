@@ -46,7 +46,7 @@ def run_qa_check(workspace_root: Path) -> QAReport:
     # 2. Sequential order & gap verification
     chapter_ids = [entry.chapter_id for entry in catalog.chapters]
     if chapter_ids:
-        min_id, max_id = min(chapter_ids), max(chapter_ids)
+        max_id = max(chapter_ids)
         # Expected contiguous sequence starting at 1
         expected_ids = set(range(1, max_id + 1))
         actual_ids = set(chapter_ids)
