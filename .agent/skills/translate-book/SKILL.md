@@ -9,11 +9,11 @@ metadata:
 
 ## Overview
 
-Translate crawled and approved Chinese chapters sequentially using context-isolated translator subagents. The Main Agent acts as a lightweight coordinator, looping through pending chapters, querying translation contexts, dispatching specialized subagents to perform translation using the native `invoke_subagent` tool, and atomically promoting the outputs. This prevents raw text files or massive translations from flooding the Main Agent's context window, ensuring high token efficiency and consistent pronoun (xưng hô) continuity.
+Translate crawled and approved Chinese chapters sequentially using a **Middle-Tier Orchestrator** pattern. The Main Agent acts as a high-level dispatcher, spawning a **Coordinator Subagent** for batches of chapters (e.g., 20 chapters at a time). The Coordinator subagent handles the micro-loop: querying translation contexts, dispatching isolated **Translator Subagents** to perform translation natively using `invoke_subagent`, and atomically promoting the outputs. This prevents the Main Agent's context window from blowing up over hundreds of loop iterations while preserving narrative continuity.
 
 > [!IMPORTANT]
 > **Context Protection & Sequential Execution:**
-> Do **NOT** read raw source Chinese files or complete Vietnamese chapters into your own Main Agent session. Spawning subagents keeps your context window clear and allows translating hundreds of chapters continuously. 
+> Do **NOT** read raw source Chinese files or complete Vietnamese chapters into your own Main Agent session. 
 > Chapters are translated **strictly in order** so that each chapter `N` can receive the completed Vietnamese translation of chapter `N-1` as narrative context.
 
 > [!WARNING]
@@ -56,48 +56,56 @@ The Main Agent checks if the book's metadata (`book.yaml`) has been translated.
      uv run python main.py update-book-metadata --workspace books/<book-slug> --translated-title "<translated_title>" --translated-author "<translated_author>"
      ```
 
-### Step 2: Query Sequential Progress and Next Target
-Check overall translation progress and fetch the exact next pending chapter ID:
+### Step 2: Query Progress and Dispatch Coordinator
+The Main Agent checks overall translation progress:
 ```bash
 $env:PYTHONUTF8=1
 uv run python main.py show-translation-progress --workspace books/<book-slug>
 ```
-* **If completed:** If the response says `"all chapter translations completed"`, print the progress and announce successful book completion!
-* **If blocked:** If the response is blocked due to preceding ordering gaps, stop and report the gap to the user for repair.
-* **If pending:** Parse the JSON payload from the command's reason field to get:
-  * `chapter_id`: 1-based sequential integer
-  * `slug`: chapter URL friendly identifier
-  * `original_title`: raw Chinese title
+* **If completed:** Print the progress and announce successful book completion!
+* **If blocked:** Stop and report the gap to the user for repair.
+* **If pending:** The Main Agent spawns a **Coordinator Subagent** to handle a batch of pending chapters (e.g., the next 20 chapters).
 
-### Step 3: Fetch Translation Context
-Prepare the context paths and continuity indicators for the current chapter:
-```bash
-$env:PYTHONUTF8=1
-uv run python main.py prepare-translation-context --workspace books/<book-slug> --chapter-id <chapter_id>
-```
-Parse the JSON payload from the reason field to retrieve:
-* `raw_path`: path to the raw Chinese file
-* `style_path`: path to the style guidelines (`style.yaml`)
-* `glossary_path`: path to the dictionary database (`glossary.yaml`)
-* `prev_translation_path`: path to Chapter `N-1`'s translation, or `null` if fallback is active (e.g. Chapter 1 or missing files)
-* `is_fallback`: `true`/`false`
-* `fallback_reason`: description if fallback is active
-
-### Step 4: Resolve Absolute Paths
-Before invoking the subagent, you must construct the absolute file paths for all input and output files by resolving their paths relative to the project root (using Python or PowerShell). This ensures the subagent can load and write files reliably regardless of its execution directory.
-
-For example, staging paths should resolve to:
-* `staged_txt`: `[Absolute path to staging/chuong-{chapter_id:04d}-staged.txt]`
-* `staged_yaml`: `[Absolute path to staging/chuong-{chapter_id:04d}-proposals.yaml]`
-
-### Step 5: Spawn the Isolation Subagent Natively
-Spawn a specialized translation subagent natively using the `invoke_subagent` tool. Do NOT attempt to run external python scripts or curl commands targeting third-party LLM APIs (OpenRouter, OpenAI, etc.). Use exactly this structure:
-
+Spawn the Coordinator using the native `invoke_subagent` tool:
 ```json
 invoke_subagent({
   "Subagents": [
     {
-      "Prompt": "[Subagent Prompt]",
+      "Prompt": "Execute the translation loop for the next 20 pending chapters sequentially. For each chapter, query progress, prepare context, spawn a Translator subagent, verify staging, and promote.",
+      "Role": "Translation Coordinator",
+      "TypeName": "ag_coordinator"
+    }
+  ]
+})
+```
+When the Coordinator completes its batch, repeat Step 2 until the book is completed.
+
+### Step 3: The Coordinator Micro-Loop
+**The following steps (3 to 8) are executed purely by the Coordinator Subagent.**
+Inside the Coordinator, query the exact next pending chapter:
+```bash
+$env:PYTHONUTF8=1
+uv run python main.py show-translation-progress --workspace books/<book-slug>
+```
+Parse the JSON payload to get `chapter_id`.
+
+### Step 4: Fetch Translation Context (Coordinator)
+Prepare context paths:
+```bash
+$env:PYTHONUTF8=1
+uv run python main.py prepare-translation-context --workspace books/<book-slug> --chapter-id <chapter_id>
+```
+
+### Step 5: Resolve Absolute Paths (Coordinator)
+Construct the absolute file paths for all input and output files by resolving their paths relative to the project root.
+
+### Step 6: Spawn the Translator Subagent (Coordinator)
+The Coordinator spawns the Translator subagent natively using `invoke_subagent`:
+```json
+invoke_subagent({
+  "Subagents": [
+    {
+      "Prompt": "[Subagent Prompt with Absolute Paths as specified in Step 4/5]",
       "Role": "Chinese-to-Vietnamese Xianxia/Tu Chan Translator",
       "TypeName": "ag_translator"
     }
@@ -105,39 +113,17 @@ invoke_subagent({
 })
 ```
 
-The prompt payload passed to the subagent must match the following template, replacing all bracketed `[Absolute Path to ...]` placeholders with the resolved absolute paths:
+### Step 7: Lightweight Staging Verification (Coordinator)
+The Coordinator runs `view_file` on the first 3 lines of `books/<book-slug>/staging/chuong-{chapter_id:04d}-staged.txt` to confirm the `# [title_vi]` format.
 
-```markdown
-Please translate the assigned chapter.
-
-## Inputs
-- raw_path: [Absolute Path to raw_path]
-- style_path: [Absolute Path to style_path]
-- glossary_path: [Absolute Path to glossary_path]
-- prev_translation_path: [Absolute Path to prev_translation_path]
-- staged_txt: [Absolute Path to staging/chuong-{chapter_id:04d}-staged.txt]
-- staged_yaml: [Absolute Path to staging/chuong-{chapter_id:04d}-proposals.yaml]
-- chapter_id: [chapter_id]
-```
-
-### Step 6: Lightweight Staging Verification
-Once the subagent returns a successful status, the Main Agent must verify the file was written correctly. To prevent context window overload:
-* Run `view_file` reading **only the first 3 lines** of the staged file `books/<book-slug>/staging/chuong-{chapter_id:04d}-staged.txt`.
-* Confirm that the first line contains the correct `# [title_vi]` format.
-* Confirm that the character count matches expectations and the file is not empty.
-
-### Step 7: Atomically Promote the Output
-Once the staging files are verified, invoke the CLI promotion subcommand:
+### Step 8: Atomically Promote and Loop (Coordinator)
+The Coordinator promotes the chapter:
 ```bash
 $env:PYTHONUTF8=1
 uv run python main.py promote-chapter --workspace books/<book-slug> --chapter-id <chapter_id>
 ```
-Confirm the command returns `status: ok`. This validates the staging files, moves the translation atomically to the `translations/` directory, merges any staged glossary proposals, updates `state.yaml` with hashes, and cleans up the staging files.
-
-### Step 8: Retries, Backoffs, and Resumption
-* **Transient Failures:** If the subagent fails or the promotion is blocked, retry the chapter up to **3 times**. Run a polite backoff before each retry.
-* **Exhausted Retries:** If a chapter fails all 3 attempts, halt execution immediately. Print a detailed error report. Leave the workspace clean at the last successful checkpoint so that the run can be resumed later.
-* **Loop:** If promotion is successful, repeat from Step 2.
+If successful, the Coordinator loops back to Step 3 until its assigned batch limit is reached.
+* **Retries:** Coordinator retries failures up to 3 times with polite backoffs before halting.
 
 ---
 
