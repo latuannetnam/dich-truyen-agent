@@ -42,5 +42,6 @@ Remains strictly identical to its current implementation.
 * **Coordinator <-> Translator:** Coordinator passes the exact absolute file paths for one chapter. Translator returns a success status once the staging files are written.
 
 ## Updates to Existing Files
+* `AGENTS.md`: Update the global orchestration guide to reflect the Middle-Tier Orchestrator pattern and nested subagent delegation.
 * `.agent/skills/translate-book/SKILL.md`: Update instructions to describe the macro-loop (Main Agent) and micro-loop (Coordinator).
 * `.claude/skills/translate-book/SKILL.md`: (If applicable, apply parallel updates).
