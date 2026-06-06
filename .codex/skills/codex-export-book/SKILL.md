@@ -1,11 +1,11 @@
 <!-- GENERATED from .harness/source by tools/sync_harness_adapters.py. Do not edit directly. -->
 
 ---
-name: oc-export-book
-description: "Use when running the export-book phase of the Chinese-to-Vietnamese novel translation pipeline in the oc harness."
+name: codex-export-book
+description: "Use when running the export-book phase of the Chinese-to-Vietnamese novel translation pipeline in the codex harness."
 ---
 
-# OC-Export Book
+# Codex-Export Book
 
 This skill compiles a sequential, QA-approved translation workspace into conformant canonical EPUB and AZW3 ebook formats by default, and derives MOBI and PDF only if explicitly requested.
 

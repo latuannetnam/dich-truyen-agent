@@ -1,11 +1,13 @@
 <!-- GENERATED from .harness/source by tools/sync_harness_adapters.py. Do not edit directly. -->
 
 ---
-name: oc-translate-book
-description: "Use when running the translate-book phase of the Chinese-to-Vietnamese novel translation pipeline in the oc harness."
+name: "ag-translate-book"
+description: "Use when running the translate-book phase of the Chinese-to-Vietnamese novel translation pipeline in the ag harness."
+metadata:
+  short-description: "Use when running the translate-book phase of the Chinese-to-Vietnamese novel translation pipeline in the ag harness."
 ---
 
-# OC-Translate Book
+# AG-Translate Book
 
 ## Overview
 
@@ -46,18 +48,33 @@ The Main Agent checks if the book's metadata (`book.yaml`) has been translated.
 
 ### Harness-Specific Translation Dispatch
 
-Use OpenCode native `task(` dispatch with `subagent_type="general"`.
+Use Antigravity native subagent dispatch with `invoke_subagent`.
 
-Metadata translation runs through the general task path with metadata-specific instructions. Chapter translation delegates to `oc-translator`:
-```text
-task(
-  subagent_type="general",
-  description="Translate the next chapter with oc-translator",
-  prompt="Use oc-translator instructions to translate the assigned chapter from the prepared context paths."
-)
+Metadata translation uses `ag_metadata_translator`:
+```json
+invoke_subagent({
+  "Subagents": [
+    {
+      "Prompt": "Translate the metadata for the book. Title: '<title>', Author: '<author>'",
+      "Role": "Chinese-to-Vietnamese Xianxia/Tu Chan Metadata Translator",
+      "TypeName": "ag_metadata_translator"
+    }
+  ]
+})
 ```
 
-OpenCode embeds the sequential loop in the `oc-translate-book` skill body and uses `task(` for each isolated chapter worker.
+Coordinator dispatch uses `ag_coordinator`, and the coordinator dispatches each chapter to `ag_translator`:
+```json
+invoke_subagent({
+  "Subagents": [
+    {
+      "Prompt": "Execute the translation loop for the next 20 pending chapters sequentially. For each chapter, query progress, prepare context, spawn ag_translator, verify staging, and promote.",
+      "Role": "Translation Coordinator",
+      "TypeName": "ag_coordinator"
+    }
+  ]
+})
+```
 
 ### Step 2: Query Progress and Dispatch Coordinator
 The Main Agent checks overall translation progress:

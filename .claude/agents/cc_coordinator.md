@@ -1,8 +1,8 @@
 <!-- GENERATED from .harness/source by tools/sync_harness_adapters.py. Do not edit directly. -->
 
 ---
-name: ag_coordinator
-description: Generated coordinator agent for ag.
+name: cc_coordinator
+description: Generated coordinator agent for cc.
 tools: Bash, Read, InvokeSubagent
 model: inherit
 ---

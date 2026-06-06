@@ -1,112 +1,94 @@
-# Dich Truyen Agent - Agent Orchestration Guide
+<!-- GENERATED from .harness/source by tools/sync_harness_adapters.py. Do not edit directly. -->
 
-This document defines the agent-native orchestration workflow for translating Chinese novels into Vietnamese. It acts as the high-level playbook for Antigravity agents to coordinate the crawl, translation, quality assurance, and export pipeline.
+# Dich Truyen Agent - Shared Harness Orchestration Guide
 
-## 1. Workspace Lifecycle & Gates
+This shared guide defines the agent-native orchestration workflow for translating Chinese novels into Vietnamese across supported harnesses.
 
-The novel workspace evolves through a series of deterministic gates. Downstream phases are strictly blocked until preceding gates are satisfied.
+## Workspace Lifecycle
 
-```mermaid
-graph TD
-    A[Start] --> B[Initialize Workspace]
-    B -->|init-book CLI| C[Workspace Initialized]
-    C -->|crawl-book Skill| D[Raw Crawl Complete]
-    D -->|approve-crawl CLI| E[Crawl Approved Gate]
-    E -->|translate-book Skill| F[Translation Complete]
-    F -->|check-translation Skill| G[QA Checked]
-    G -->|approve-qa CLI| H[QA Approved Gate]
-    H -->|export-book Skill| I[Ebooks Exported]
-```
+The novel workspace evolves through deterministic gates. Downstream phases are blocked until preceding gates pass:
 
-Each gate is verified using the CLI helper:
+1. Initialize the workspace with `init-book`.
+2. Crawl raw chapters with the harness-prefixed crawl skill.
+3. Approve crawl evidence with `approve-crawl`.
+4. Translate chapters sequentially with the harness-prefixed translate skill.
+5. Run QA with the harness-prefixed check skill.
+6. Approve QA evidence with `approve-qa`.
+7. Export ebooks with the harness-prefixed export skill.
+
+Verify gates with:
 ```powershell
+$env:PYTHONUTF8=1
 uv run python main.py check-gate --workspace books/<book-slug> --type <crawl-approved|qa-approved>
 ```
 
----
+## Setup And Initialization
 
-## 2. Pipeline Skills & Entry Points
+Initialize a clean book directory and build schemas with:
+```powershell
+$env:PYTHONUTF8=1
+uv run python main.py init-book --slug <book-slug> --title "<title>" --source-url "<source-url>" [--author "<author>"]
+```
 
-Antigravity agents must run the following skills and commands to transition the workspace through each phase. **Refer to each skill's `SKILL.md` for specific step-by-step instructions.**
+When retrieving metadata from source sites, prefer terminal-driven HTTP requests with browser-like headers and explicit source encoding such as `gbk` or `utf-8`.
 
-### Phase 1: Setup & Initialization
-* **Responsibility**: Initialize a clean book directory and build Pydantic schemas.
-* **Retrieve Metadata**: To prevent request blocking/security issues on target sites, explicitly fetch the page content via the terminal using a Python script with custom browser-like headers and the appropriate site encoding (e.g., `gbk` or `utf-8`) instead of built-in URL fetch tools:
-  ```powershell
-  $env:PYTHONUTF8=1
-  uv run python -c "import httpx; from bs4 import BeautifulSoup; r = httpx.get('<source-url>', headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'}, follow_redirects=True, timeout=15); html = r.content.decode('gbk', errors='ignore'); soup = BeautifulSoup(html, 'lxml'); print('Title:', soup.title.string.strip() if soup.title else None); print('H1:', soup.find('h1').text.strip() if soup.find('h1') else None); import re; author = re.search(r'\u4f5c\u8005\uff1a([^\r\n\xa0\u3000]+)', soup.get_text()); print('Author:', author.group(1).strip() if author else None)"
-  ```
-* **Entry Point**: Run the CLI setup:
-  ```powershell
-  uv run python main.py init-book --slug <book-slug> --title "<title>" --source-url "<source-url>" [--author "<author>"]
-  ```
+## Token & Context Protection
 
+Never read raw source Chinese files or completed Vietnamese chapters into your own Main Agent session. Reading raw files quickly overwhelms the context window.
 
+For large books, delegate the translation loop to a Coordinator Subagent that handles bounded batches. The Coordinator must spawn specialized Translator Subagents for individual chapter translation tasks. The Translator Subagent is the only worker that performs file-level raw chapter reading.
 
-### Phase 2: Crawling & Checkpoint Approval
-* **Responsibility**: Crawl Chinese chapters and secure a `crawl-approved` checkpoint.
-* **Skill Guide**: [crawl-book SKILL.md](.agent/skills/crawl-book/SKILL.md)
-* **Approving Crawl**:
-  ```powershell
-  uv run python main.py approve-crawl --workspace books/<book-slug>
-  ```
+## Sequential Order & Context Handoff
 
-### Phase 3: Sequential Translation & Subagent Isolation
-* **Responsibility**: Translate chapters sequentially in order using context-isolated subagents to preserve main agent context token efficiency.
-* **Skill Guide**: [translate-book SKILL.md](.agent/skills/translate-book/SKILL.md)
+Chapters must be translated strictly in order. Chapter `N` must use the completed Vietnamese output of Chapter `N-1` as narrative context to preserve pronoun continuity. If a gap or preceding missing chapter is discovered, stop execution and report it to the user.
 
-### Phase 4: Quality Assurance & QA Approval
-* **Responsibility**: Scan translation outputs for errors (residue, formatting, length anomalies) and approve.
-* **Skill Guide**: [check-translation SKILL.md](.agent/skills/check-translation/SKILL.md)
-* **Approving QA**:
-  ```powershell
-  uv run python main.py approve-qa --workspace books/<book-slug>
-  ```
+## Failure Handling & Resumption
 
-### Phase 5: Ebook and Derivative Export
-* **Responsibility**: Run EPUBCheck and compile the book into canonical EPUB and optional formats (AZW3, MOBI, PDF).
-* **Skill Guide**: [export-book SKILL.md](.agent/skills/export-book/SKILL.md)
+Translation retries default to 3 attempts with polite backoffs. Exhausted retries must halt the workflow immediately. Keep the workspace clean up to the last promoted chapter so that the run can resume later.
 
----
+## External LLM API Guardrail
 
-## 3. Global Orchestration Guardrails
+Never use an External LLM API, endpoint, SDK import, API key, Python script, curl request, or other external tool to perform translation. Use only the native harness translator subagent.
 
-To ensure high-quality translations, stability, and token efficiency, the following rules must be strictly adhered to:
+## Environment & Console Compatibility
 
-### Token & Context Protection
-* **Strict Constraint**: Never load raw source Chinese files or completed Vietnamese chapters into your own Main Agent session. Reading raw files quickly overwhelms the context window.
-* **Middle-Tier Orchestrator Pattern**: For large books, the Main Agent must delegate the translation loop to a **Coordinator Subagent** (handling batches of e.g. 20-30 chapters). 
-* **Translator Isolation**: The Coordinator subagent must then spawn specialized **Translator Subagents** for the individual chapter translation tasks. The Translator subagent is the only worker that performs file-level reading.
+Always run CLI commands with `PYTHONUTF8=1` to prevent Windows encoding errors:
+```powershell
+$env:PYTHONUTF8=1
+uv run python main.py <command>
+```
 
-### Sequential Order & Context Handoff
-* Chapters must be translated **strictly in order**.
-* The translation of Chapter `N` must use the Vietnamese output of Chapter `N-1` as narrative context to ensure pronoun (xưng hô) continuity.
-* If a gap or preceding missing chapter is discovered, stop execution and report it to the user.
+When running tests or tools in the sandbox, configure the uv cache:
+```powershell
+$env:UV_CACHE_DIR="$PWD\.uv-cache"
+```
 
-### Failure Handling & Resumption
-* **Retries**: Translation retries default to 3 attempts with polite backoffs.
-* **Halt on Failure**: Exhausted retries must stop the workflow immediately rather than letting lower-quality/empty downstream translations continue.
-* **Resumability**: On failure, keep the workspace in a clean state up to the last promoted chapter so that the run can be resumed later.
+## Harness Capability Matrix
 
-### Environment & Console Compatibility
-* **Unicode / UTF-8**: Always run CLI commands with the `PYTHONUTF8` environment variable enabled to prevent Windows encoding errors (`UnicodeEncodeError`):
-  ```powershell
-  $env:PYTHONUTF8=1
-  uv run python main.py <command>
-  ```
-* **Sandbox Directory Permissions**: When running test suites or tools in the Antigravity sandbox, configure cache locations to prevent Windows DACL permission blocks:
-  ```powershell
-  $env:UV_CACHE_DIR="$PWD\.uv-cache"
-  ```
+### Antigravity Panel
 
-## OpenCode-Native Skill Variants
+- Skills use the `ag-` prefix, including `ag-crawl-book`, `ag-translate-book`, `ag-check-translation`, and `ag-export-book`.
+- Use `run_command` for CLI commands.
+- Use `view_file` for bounded file inspection.
+- Use `invoke_subagent` to delegate coordinator, translator, and metadata translation work.
 
-For users running the **OpenCode** runtime (vs. Claude Code or Antigravity), parallel `oc-*` skills live in `.opencode/skill/`:
+### Claude Code Panel
 
-- `oc-crawl-book` — equivalent of `crawl-book`, uses the `bash` tool
-- `oc-translate-book` — equivalent of `translate-book`, uses `task({subagent_type:"oc-translator"})` and embeds the sequential loop in the skill body (no `Workflow` tool)
-- `oc-check-translation` — equivalent of `check-translation`
-- `oc-export-book` — equivalent of `export-book`
-- `oc-translator` (subagent) — equivalent of `.claude/agents/translator.md`
+- Skills use the `cc-` prefix, including `cc-crawl-book`, `cc-translate-book`, `cc-check-translation`, and `cc-export-book`.
+- Use `Bash` for CLI commands.
+- Use `Read` for bounded file inspection.
+- Use `Agent` and `Workflow` for coordinator and translator delegation.
 
-The `.agent/skills/*` and `.claude/skills/*` versions are NOT modified. Both runtimes continue to work. See `opencode.json` `permission.bash` for the OpenCode-specific external-LLM guardrail (declarative, command-string only — Python file-content scan from the original hook is dropped).
+### OpenCode Panel
+
+- Skills use the `oc-` prefix, including `oc-crawl-book`, `oc-translate-book`, `oc-check-translation`, and `oc-export-book`.
+- Use `bash` for CLI commands.
+- Use `read` for bounded file inspection.
+- Use `task` for subagent delegation.
+- Keep external LLM guardrails aligned with `opencode.json`.
+
+### Codex Panel
+
+- Skills use the `codex-` prefix, including `codex-crawl-book`, `codex-translate-book`, `codex-check-translation`, and `codex-export-book`.
+- Use `shell_command` for CLI commands.
+- Use `spawn_agent` for native Codex subagent delegation.

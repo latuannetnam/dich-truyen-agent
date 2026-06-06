@@ -1,11 +1,13 @@
 <!-- GENERATED from .harness/source by tools/sync_harness_adapters.py. Do not edit directly. -->
 
 ---
-name: oc-crawl-book
-description: "Use when running the crawl-book phase of the Chinese-to-Vietnamese novel translation pipeline in the oc harness."
+name: "ag-crawl-book"
+description: "Use when running the crawl-book phase of the Chinese-to-Vietnamese novel translation pipeline in the ag harness."
+metadata:
+  short-description: "Use when running the crawl-book phase of the Chinese-to-Vietnamese novel translation pipeline in the ag harness."
 ---
 
-# OC-Crawl Book
+# AG-Crawl Book
 
 Crawl a Chinese novel sequentially and resume downloads into a local workspace using robust static parsing and headless browser fallback. Use the active harness command-execution capability for CLI commands and the active harness file-reading capability for bounded report inspection.
 

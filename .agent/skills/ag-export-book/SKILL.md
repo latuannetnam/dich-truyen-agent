@@ -1,13 +1,17 @@
+<!-- GENERATED from .harness/source by tools/sync_harness_adapters.py. Do not edit directly. -->
+
 ---
-name: export-book
-description: Use when exporting a QA-approved translation workspace into EPUB/AZW3/MOBI/PDF ebook artifacts. Triggered by phrases like "export ebook", "build epub", "generate the book file", "compile the novel", or when a workspace has a valid qa-approved checkpoint and needs final artifacts.
+name: "ag-export-book"
+description: "Use when running the export-book phase of the Chinese-to-Vietnamese novel translation pipeline in the ag harness."
+metadata:
+  short-description: "Use when running the export-book phase of the Chinese-to-Vietnamese novel translation pipeline in the ag harness."
 ---
 
-# Export Book
+# AG-Export Book
 
-This skill compiles a sequential, QA-approved translation workspace into conformant canonical EPUB and AZW3 ebook formats by default, and derives MOBI and PDF only if explicitly requested. This is the Claude Code mirror of `.agent/skills/export-book/SKILL.md`.
+This skill compiles a sequential, QA-approved translation workspace into conformant canonical EPUB and AZW3 ebook formats by default, and derives MOBI and PDF only if explicitly requested.
 
-## CLI Usage (Bash tool)
+## CLI Usage
 
 ```powershell
 # Default: generate canonical EPUB + AZW3 only (enforces QA approval checkpoint)
@@ -36,8 +40,8 @@ $env:DICH_TRUYEN_CALIBRE_PATH
 - Derivative formats are written to the same directory as `books/<book-slug>/exports/<book-slug>.<format>`.
 - Export results are logged to `books/<book-slug>/reports/results/export-book.yaml`.
 
-## Notes for Claude Code Runtime
+## Runtime Notes
 
-- The export command refuses to run without a valid `qa-approved` checkpoint. If it blocks, run the `check-translation` skill first.
-- Use the Read tool to inspect `reports/results/export-book.yaml` for the per-format success status and any EPUBCheck warnings.
-- Do not attempt to validate or modify the resulting `.epub` files by hand — trust the EPUBCheck pipeline.
+- The export command refuses to run without a valid `qa-approved` checkpoint. If it blocks, run the active harness check-translation skill first.
+- Use bounded file-reading to inspect `reports/results/export-book.yaml` for the per-format success status and any EPUBCheck warnings.
+- Do not attempt to validate or modify the resulting `.epub` files by hand - trust the EPUBCheck pipeline.

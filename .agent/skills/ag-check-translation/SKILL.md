@@ -1,11 +1,13 @@
 <!-- GENERATED from .harness/source by tools/sync_harness_adapters.py. Do not edit directly. -->
 
 ---
-name: oc-check-translation
-description: "Use when running the check-translation phase of the Chinese-to-Vietnamese novel translation pipeline in the oc harness."
+name: "ag-check-translation"
+description: "Use when running the check-translation phase of the Chinese-to-Vietnamese novel translation pipeline in the ag harness."
+metadata:
+  short-description: "Use when running the check-translation phase of the Chinese-to-Vietnamese novel translation pipeline in the ag harness."
 ---
 
-# OC-Check Translation
+# AG-Check Translation
 
 Deterministic, non-mutating quality check pipeline evaluating structural consistency, CJK residue, character length ratios, and glossary mapping conflicts. Creating a cryptographically secure `qa-approved` checkpoint unlocks final ebook exports.
 

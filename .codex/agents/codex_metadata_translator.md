@@ -1,8 +1,8 @@
 <!-- GENERATED from .harness/source by tools/sync_harness_adapters.py. Do not edit directly. -->
 
 ---
-name: ag_metadata_translator
-description: Generated metadata-translator agent for ag.
+name: codex_metadata_translator
+description: Generated metadata-translator agent for codex.
 tools: Read, Write, Glob, Grep
 model: inherit
 ---

@@ -1,11 +1,11 @@
 <!-- GENERATED from .harness/source by tools/sync_harness_adapters.py. Do not edit directly. -->
 
 ---
-name: oc-translate-book
-description: "Use when running the translate-book phase of the Chinese-to-Vietnamese novel translation pipeline in the oc harness."
+name: codex-translate-book
+description: "Use when running the translate-book phase of the Chinese-to-Vietnamese novel translation pipeline in the codex harness."
 ---
 
-# OC-Translate Book
+# Codex-Translate Book
 
 ## Overview
 
@@ -46,18 +46,17 @@ The Main Agent checks if the book's metadata (`book.yaml`) has been translated.
 
 ### Harness-Specific Translation Dispatch
 
-Use OpenCode native `task(` dispatch with `subagent_type="general"`.
+Use `spawn_agent` for native Codex subagent delegation.
 
-Metadata translation runs through the general task path with metadata-specific instructions. Chapter translation delegates to `oc-translator`:
+Metadata translation uses `codex_metadata_translator`, and chapter translation uses `codex_translator`:
 ```text
-task(
-  subagent_type="general",
-  description="Translate the next chapter with oc-translator",
-  prompt="Use oc-translator instructions to translate the assigned chapter from the prepared context paths."
+spawn_agent(
+  type="codex_coordinator",
+  prompt="Execute the translation loop for the next 20 pending chapters sequentially. For each chapter, query progress, prepare context, spawn codex_translator, verify staging, and promote."
 )
 ```
 
-OpenCode embeds the sequential loop in the `oc-translate-book` skill body and uses `task(` for each isolated chapter worker.
+This path must use native Codex subagent delegation only, never external LLM APIs.
 
 ### Step 2: Query Progress and Dispatch Coordinator
 The Main Agent checks overall translation progress:

@@ -1,11 +1,11 @@
 <!-- GENERATED from .harness/source by tools/sync_harness_adapters.py. Do not edit directly. -->
 
 ---
-name: oc-translate-book
-description: "Use when running the translate-book phase of the Chinese-to-Vietnamese novel translation pipeline in the oc harness."
+name: cc-translate-book
+description: "Use when running the translate-book phase of the Chinese-to-Vietnamese novel translation pipeline in the cc harness."
 ---
 
-# OC-Translate Book
+# CC-Translate Book
 
 ## Overview
 
@@ -46,18 +46,23 @@ The Main Agent checks if the book's metadata (`book.yaml`) has been translated.
 
 ### Harness-Specific Translation Dispatch
 
-Use OpenCode native `task(` dispatch with `subagent_type="general"`.
+Use Claude Code native `Agent` dispatch.
 
-Metadata translation runs through the general task path with metadata-specific instructions. Chapter translation delegates to `oc-translator`:
+Metadata translation uses `cc_metadata_translator`:
 ```text
-task(
-  subagent_type="general",
-  description="Translate the next chapter with oc-translator",
-  prompt="Use oc-translator instructions to translate the assigned chapter from the prepared context paths."
-)
+Agent({
+  subagent_type: "cc_metadata_translator",
+  prompt: "Translate the metadata for the book. Title: '<title>', Author: '<author>'"
+})
 ```
 
-OpenCode embeds the sequential loop in the `oc-translate-book` skill body and uses `task(` for each isolated chapter worker.
+Coordinator dispatch uses `cc_coordinator`, and the coordinator dispatches each chapter to `cc_translator`:
+```text
+Agent({
+  subagent_type: "cc_coordinator",
+  prompt: "Execute the translation loop for the next 20 pending chapters sequentially. For each chapter, query progress, prepare context, spawn cc_translator, verify staging, and promote."
+})
+```
 
 ### Step 2: Query Progress and Dispatch Coordinator
 The Main Agent checks overall translation progress:

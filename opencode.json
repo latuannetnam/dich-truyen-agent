@@ -1,6 +1,8 @@
 {
   "$schema": "https://opencode.ai/config.json",
-  "plugin": ["superpowers@git+https://github.com/obra/superpowers.git"],  
+  "plugin": [
+    "superpowers@git+https://github.com/obra/superpowers.git"
+  ],
   "permission": {
     "bash": {
       "*": "allow",
@@ -26,8 +28,18 @@
       "translate-book": "deny",
       "check-translation": "deny",
       "export-book": "deny",
-      "brainstorming": "deny",
-      "writing-plans": "deny"
+      "ag-crawl-book": "deny",
+      "ag-translate-book": "deny",
+      "ag-check-translation": "deny",
+      "ag-export-book": "deny",
+      "cc-crawl-book": "deny",
+      "cc-translate-book": "deny",
+      "cc-check-translation": "deny",
+      "cc-export-book": "deny",
+      "codex-crawl-book": "deny",
+      "codex-translate-book": "deny",
+      "codex-check-translation": "deny",
+      "codex-export-book": "deny"
     },
     "edit": "allow",
     "read": "allow",
