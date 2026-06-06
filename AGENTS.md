@@ -75,7 +75,8 @@ To ensure high-quality translations, stability, and token efficiency, the follow
 
 ### Token & Context Protection
 * **Strict Constraint**: Never load raw source Chinese files or completed Vietnamese chapters into your own Main Agent session. Reading raw files quickly overwhelms the context window.
-* **Subagent Isolation**: Always spawn a specialized subagent for the individual translation task (as defined in `translate-book/SKILL.md`). The subagent is the only worker that performs file-level reading.
+* **Middle-Tier Orchestrator Pattern**: For large books, the Main Agent must delegate the translation loop to a **Coordinator Subagent** (handling batches of e.g. 20-30 chapters). 
+* **Translator Isolation**: The Coordinator subagent must then spawn specialized **Translator Subagents** for the individual chapter translation tasks. The Translator subagent is the only worker that performs file-level reading.
 
 ### Sequential Order & Context Handoff
 * Chapters must be translated **strictly in order**.
