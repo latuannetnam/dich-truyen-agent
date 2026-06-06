@@ -1,0 +1,15 @@
+schema_version: 1
+domain: www.69shuba.com
+index:
+  chapter_link_selector: "#catalog ul li a"
+  pagination_selector: null
+  list_section_selectors: []
+chapter:
+  title_selector: "h1"
+  content_selector: ".txtnav"
+  remove_selectors: ["div", "script", "table", "h1", "center"]
+encoding:
+  index: "gbk"
+  chapter: "gbk"
+validation:
+  min_chapter_characters: 100

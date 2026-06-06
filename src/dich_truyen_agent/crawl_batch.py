@@ -59,9 +59,9 @@ def detect_anti_bot_blocking(html: str, status_code: int = 200) -> str | None:
 
     lower_html = html.lower()
     markers = [
-        "cloudflare", "captcha", "recaptcha", "hcaptcha", "security check",
+        "cloudflare protection", "captcha", "recaptcha", "hcaptcha", "security check",
         "verify you are human", "robot check", "anti-bot", "ddos protection",
-        "please turn on javascript"
+        "please turn on javascript", "just a moment"
     ]
     for marker in markers:
         if marker in lower_html:
@@ -122,25 +122,42 @@ async def crawl_book(
             # For new book or empty catalog, we fetch index to build catalog & metadata
             try:
                 raw_bytes, http_charset = await crawler.fetch(source_url)
-            except Exception as e:
-                await crawler.close()
-                return OperationResult(
-                    status=OperationStatus.ERROR,
-                    reason=f"failed to fetch book index: {e}",
+                html_content, chosen_encoding, provenance = decode_html(
+                    raw_bytes, profile_source.profile.encoding.index, http_charset
                 )
-
-            html_content, chosen_encoding, provenance = decode_html(
-                raw_bytes, profile_source.profile.encoding.index, http_charset
-            )
+                challenge = detect_anti_bot_blocking(html_content)
+                if challenge:
+                    raise ValueError(f"anti-bot block on index page: {challenge}")
+            except Exception as e:
+                # Fallback to Playwright for index page
+                try:
+                    fallback_renderer = renderer_instance or PlaywrightRenderer()
+                    html_content = await fallback_renderer.render(source_url)
+                except Exception as playwright_err:
+                    await crawler.close()
+                    return OperationResult(
+                        status=OperationStatus.ERROR,
+                        reason=f"failed to fetch book index (static fetch failed with: {e}, playwright fallback failed with: {playwright_err})",
+                    )
 
             # Discover and validate catalog
             discovered = discover_catalog(html_content, source_url, profile_source.profile)
             if not discovered:
-                await crawler.close()
-                return OperationResult(
-                    status=OperationStatus.BLOCKED,
-                    reason="discovered catalog contains zero chapters; selector rule might be broken",
-                )
+                # Try Playwright fallback if we haven't already used it
+                if "fallback_renderer" not in locals():
+                    try:
+                        fallback_renderer = renderer_instance or PlaywrightRenderer()
+                        html_content = await fallback_renderer.render(source_url)
+                        discovered = discover_catalog(html_content, source_url, profile_source.profile)
+                    except Exception:
+                        pass
+                
+                if not discovered:
+                    await crawler.close()
+                    return OperationResult(
+                        status=OperationStatus.BLOCKED,
+                        reason="discovered catalog contains zero chapters; selector rule might be broken",
+                    )
 
             findings = validate_discovered_catalog(discovered)
             if findings["blockers"]:
@@ -299,6 +316,10 @@ async def crawl_book(
                     # Check anti-bot challenges
                     challenge = detect_anti_bot_blocking(html_body)
                     if challenge:
+                        if not use_playwright:
+                            use_playwright = True
+                            attempts -= 1  # Offset attempt counter to allow browser fallback immediately
+                            continue
                         await crawler.close()
                         return OperationResult(
                             status=OperationStatus.BLOCKED,
@@ -326,6 +347,12 @@ async def crawl_book(
                     last_error = str(exc)
                     # Non-recoverable error stops batch immediately
                     if not is_recoverable_exception(exc) and not use_playwright:
+                        if isinstance(exc, httpx.HTTPStatusError) and exc.response.status_code in (403, 429):
+                            use_playwright = True
+                            attempts -= 1  # Offset attempt counter to allow browser fallback immediately
+                            continue
+                    
+                    if not is_recoverable_exception(exc):
                         chapter_state.raw = StageRecord(
                             status=StageStatus.ERROR,
                             error=f"Non-recoverable crawl error: {exc}",
@@ -388,6 +415,8 @@ async def crawl_book(
 
     finally:
         await crawler.close()
+        if hasattr(renderer, "close"):
+            await renderer.close()
 
     # Successful completion of download scope
     return OperationResult(
