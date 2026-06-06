@@ -222,6 +222,7 @@ __marimo__/
 # Local agent settings
 .claude/settings.local.json
 .codex/config.toml
+.worktrees/
 
 
 #Books related
