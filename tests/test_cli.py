@@ -89,19 +89,17 @@ def test_init_book_resume_uses_workspace_style_snapshot(tmp_path: Path) -> None:
 def test_skill_skeletons_are_honest_phase_one_contracts() -> None:
     skills_root = Path(".agent") / "skills"
     for skill_name in (
-        "translate-book",
-        "check-translation",
-        "export-book",
+        "ag-translate-book",
+        "ag-check-translation",
+        "ag-export-book",
     ):
         text = (skills_root / skill_name / "SKILL.md").read_text(encoding="utf-8")
         assert f'name: "{skill_name}"' in text
+        assert "GENERATED from .harness/source" in text
         assert "description:" in text
         assert "short-description:" in text
-        assert "books/<book-slug>/" in text
-        assert "reports/results/" in text
+        assert "books/<book-slug>" in text
         assert "checkpoint" in text.lower()
-        if skill_name != "export-book":
-            assert "not implemented by Phase 1" in text
 
 
 

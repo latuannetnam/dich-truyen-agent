@@ -34,6 +34,12 @@ def test_skill_md_exists(skill_name):
 
 
 @pytest.mark.parametrize("skill_name", EXPECTED_SKILLS)
+def test_skill_is_generated(skill_name):
+    skill_md = OC_SKILLS_DIR / skill_name / "SKILL.md"
+    assert "GENERATED from .harness/source" in skill_md.read_text(encoding="utf-8")
+
+
+@pytest.mark.parametrize("skill_name", EXPECTED_SKILLS)
 def test_skill_frontmatter_name_matches_folder(skill_name):
     skill_md = OC_SKILLS_DIR / skill_name / "SKILL.md"
     fm = _parse_frontmatter(skill_md)

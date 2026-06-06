@@ -20,6 +20,10 @@ def test_translator_md_exists():
     assert TRANSLATOR_MD.is_file(), f"Missing {TRANSLATOR_MD}"
 
 
+def test_translator_is_generated():
+    assert "GENERATED from .harness/source" in TRANSLATOR_MD.read_text(encoding="utf-8")
+
+
 def test_translator_mode_subagent(frontmatter):
     assert re.search(r"^mode:\s*subagent", frontmatter, re.MULTILINE), (
         "mode must be 'subagent'"

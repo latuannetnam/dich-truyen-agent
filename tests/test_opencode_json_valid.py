@@ -133,8 +133,18 @@ DISABLED_FOLDER_SKILLS = [
     "translate-book",
     "check-translation",
     "export-book",
-    "brainstorming",
-    "writing-plans",
+    "ag-crawl-book",
+    "ag-translate-book",
+    "ag-check-translation",
+    "ag-export-book",
+    "cc-crawl-book",
+    "cc-translate-book",
+    "cc-check-translation",
+    "cc-export-book",
+    "codex-crawl-book",
+    "codex-translate-book",
+    "codex-check-translation",
+    "codex-export-book",
 ]
 
 
