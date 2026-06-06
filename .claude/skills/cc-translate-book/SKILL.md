@@ -1,15 +1,15 @@
-<!-- GENERATED from .harness/source by tools/sync_harness_adapters.py. Do not edit directly. -->
-
 ---
 name: cc-translate-book
 description: "Use when running the translate-book phase of the Chinese-to-Vietnamese novel translation pipeline in the cc harness."
 ---
 
+<!-- GENERATED from .harness/source by tools/sync_harness_adapters.py. Do not edit directly. -->
+
 # CC-Translate Book
 
 ## Overview
 
-Translate crawled and approved Chinese chapters sequentially using a **Middle-Tier Orchestrator** pattern. The Main Agent acts as a high-level dispatcher, spawning a **Coordinator Subagent** for batches of chapters (e.g., 20 chapters at a time). The Coordinator subagent handles the micro-loop: querying translation contexts, dispatching isolated **Translator Subagents** to perform translation natively, and atomically promoting the outputs. This prevents the Main Agent's context window from blowing up over hundreds of loop iterations while preserving narrative continuity.
+Translate crawled and approved Chinese chapters sequentially with harness-native isolated translation workers. The workflow protects the Main Agent context window while preserving narrative continuity across chapters.
 
 > [!IMPORTANT]
 > **Context Protection & Sequential Execution:**

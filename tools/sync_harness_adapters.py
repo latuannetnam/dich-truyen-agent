@@ -53,13 +53,102 @@ def skill_frontmatter(harness: str, skill: str) -> str:
     return "---\n" f"name: {name}\n" f"description: \"{description}\"\n" "---\n\n"
 
 
+def translate_orchestration(harness: str) -> str:
+    if harness == "oc":
+        return """### Step 2: Query Progress and Run the Embedded OpenCode Loop
+The Main Agent checks overall translation progress:
+```bash
+$env:PYTHONUTF8=1
+uv run python main.py show-translation-progress --workspace books/<book-slug>
+```
+* **If completed:** Print the progress and report book completion.
+* **If blocked:** Stop and report the gap to the user for repair.
+* **If pending:** Continue with the next pending chapter inside this OpenCode skill loop.
+
+### Step 3: Fetch the Next Translation Context
+Use the progress payload to identify the exact next pending `chapter_id`, then prepare context paths:
+```bash
+$env:PYTHONUTF8=1
+uv run python main.py prepare-translation-context --workspace books/<book-slug> --chapter-id <chapter_id>
+```
+
+### Step 4: Resolve Absolute Paths
+Construct the absolute file paths for all input and output files by resolving their paths relative to the project root.
+
+### Step 5: Dispatch the Isolated OpenCode Worker
+Use the OpenCode `task(` dispatch shown above with `subagent_type="general"` and `oc-translator` instructions, passing the absolute paths reported by `prepare-translation-context`.
+
+### Step 6: Lightweight Staging Verification
+Read only the first 3 lines of `books/<book-slug>/staging/chuong-{chapter_id:04d}-staged.txt` to confirm the `# [title_vi]` format.
+
+### Step 7: Atomically Promote and Continue
+Promote the chapter:
+```bash
+$env:PYTHONUTF8=1
+uv run python main.py promote-chapter --workspace books/<book-slug> --chapter-id <chapter_id>
+```
+If successful, loop back to Step 2 for the next pending chapter.
+* **Retries:** Retry failures up to 3 times with polite backoffs before halting."""
+
+    return """### Step 2: Query Progress and Dispatch Coordinator
+The Main Agent checks overall translation progress:
+```bash
+$env:PYTHONUTF8=1
+uv run python main.py show-translation-progress --workspace books/<book-slug>
+```
+* **If completed:** Print the progress and report book completion.
+* **If blocked:** Stop and report the gap to the user for repair.
+* **If pending:** The Main Agent spawns a **Coordinator Subagent** to handle a batch of pending chapters (e.g., the next 20 chapters) using the harness-native dispatch block above.
+
+> [!IMPORTANT]
+> **Enforced Stateless Iteration:**
+> 1. **Strict Batch Limit:** You must NEVER instruct a single Coordinator to translate the entire book. You must always specify a strict limit (e.g., 20 chapters) in your prompt.
+> 2. **Fresh Instances:** When the Coordinator completes its batch, you must spawn a completely NEW Coordinator instance. Do not send follow-up instructions to the previous subagent.
+> 3. **Loop:** Repeat this cycle of spawning fresh Coordinators until the progress check returns "completed".
+
+### Step 3: The Coordinator Micro-Loop
+**The following steps (3 to 8) are executed purely by the Coordinator Subagent.**
+Inside the Coordinator, query the exact next pending chapter:
+```bash
+$env:PYTHONUTF8=1
+uv run python main.py show-translation-progress --workspace books/<book-slug>
+```
+Parse the JSON payload to get `chapter_id`.
+
+### Step 4: Fetch Translation Context (Coordinator)
+Prepare context paths:
+```bash
+$env:PYTHONUTF8=1
+uv run python main.py prepare-translation-context --workspace books/<book-slug> --chapter-id <chapter_id>
+```
+
+### Step 5: Resolve Absolute Paths (Coordinator)
+Construct the absolute file paths for all input and output files by resolving their paths relative to the project root.
+
+### Step 6: Spawn the Translator Subagent (Coordinator)
+The Coordinator spawns the Translator subagent using the harness-native mechanism in the dispatch block, passing the absolute paths reported by `prepare-translation-context`.
+
+### Step 7: Lightweight Staging Verification (Coordinator)
+The Coordinator reads only the first 3 lines of `books/<book-slug>/staging/chuong-{chapter_id:04d}-staged.txt` to confirm the `# [title_vi]` format.
+
+### Step 8: Atomically Promote and Loop (Coordinator)
+The Coordinator promotes the chapter:
+```bash
+$env:PYTHONUTF8=1
+uv run python main.py promote-chapter --workspace books/<book-slug> --chapter-id <chapter_id>
+```
+If successful, the Coordinator loops back to Step 3 until its assigned batch limit is reached.
+* **Retries:** Coordinator retries failures up to 3 times with polite backoffs before halting."""
+
+
 def render_skill(manifest: dict, harness: str, skill: str) -> RenderedFile:
     body = read_text(SOURCE / "skills" / f"{skill}.md")
     body = body.replace("{SKILL_TITLE}", skill_title(harness, skill))
     if skill == "translate-book":
         dispatch = read_text(SOURCE / "dispatch" / f"translate-{harness}.md").strip()
         body = body.replace("{TRANSLATE_DISPATCH}", dispatch)
-    content = generated_header(manifest) + skill_frontmatter(harness, skill) + body.rstrip() + "\n"
+        body = body.replace("{TRANSLATE_ORCHESTRATION}", translate_orchestration(harness))
+    content = skill_frontmatter(harness, skill) + generated_header(manifest) + body.rstrip() + "\n"
     path = {
         "ag": ROOT / ".agent" / "skills" / f"ag-{skill}" / "SKILL.md",
         "cc": ROOT / ".claude" / "skills" / f"cc-{skill}" / "SKILL.md",
@@ -112,7 +201,7 @@ def render_agent(manifest: dict, harness: str, agent: str) -> RenderedFile | Non
         "oc": ROOT / ".opencode" / "agent" / agent_file,
         "codex": ROOT / ".codex" / "agents" / agent_file,
     }[harness]
-    content = generated_header(manifest) + agent_frontmatter(harness, agent) + body.rstrip() + "\n"
+    content = agent_frontmatter(harness, agent) + generated_header(manifest) + body.rstrip() + "\n"
     return RenderedFile(path=path, content=content)
 
 

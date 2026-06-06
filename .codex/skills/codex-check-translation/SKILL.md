@@ -1,9 +1,9 @@
-<!-- GENERATED from .harness/source by tools/sync_harness_adapters.py. Do not edit directly. -->
-
 ---
 name: codex-check-translation
 description: "Use when running the check-translation phase of the Chinese-to-Vietnamese novel translation pipeline in the codex harness."
 ---
+
+<!-- GENERATED from .harness/source by tools/sync_harness_adapters.py. Do not edit directly. -->
 
 # Codex-Check Translation
 

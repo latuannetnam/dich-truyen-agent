@@ -1,9 +1,9 @@
-<!-- GENERATED from .harness/source by tools/sync_harness_adapters.py. Do not edit directly. -->
-
 ---
 name: cc-crawl-book
 description: "Use when running the crawl-book phase of the Chinese-to-Vietnamese novel translation pipeline in the cc harness."
 ---
+
+<!-- GENERATED from .harness/source by tools/sync_harness_adapters.py. Do not edit directly. -->
 
 # CC-Crawl Book
 

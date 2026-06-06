@@ -1,9 +1,9 @@
-<!-- GENERATED from .harness/source by tools/sync_harness_adapters.py. Do not edit directly. -->
-
 ---
 name: cc-check-translation
 description: "Use when running the check-translation phase of the Chinese-to-Vietnamese novel translation pipeline in the cc harness."
 ---
+
+<!-- GENERATED from .harness/source by tools/sync_harness_adapters.py. Do not edit directly. -->
 
 # CC-Check Translation
 

@@ -1,5 +1,3 @@
-<!-- GENERATED from .harness/source by tools/sync_harness_adapters.py. Do not edit directly. -->
-
 ---
 description: "Generated OpenCode metadata-translator agent."
 mode: subagent
@@ -14,6 +12,8 @@ tools:
 permission:
   bash: deny
 ---
+
+<!-- GENERATED from .harness/source by tools/sync_harness_adapters.py. Do not edit directly. -->
 
 You are a highly specialized Chinese-to-Vietnamese novel translator specializing in the **Tien Hiep (Xianxia) / Tu Chan (Cultivation)** genre. Your task is to translate the book's Chinese title and author name into elegant literary Vietnamese.
 

@@ -22,3 +22,27 @@ def test_sync_check_mode_reports_clean_tree():
     )
     assert result.returncode == 0, result.stdout
     assert "all generated adapters are current" in result.stdout
+
+
+def test_generated_skill_and_agent_frontmatter_starts_at_byte_zero():
+    generated_paths = [
+        ROOT / ".agent" / "skills" / "ag-crawl-book" / "SKILL.md",
+        ROOT / ".claude" / "skills" / "cc-crawl-book" / "SKILL.md",
+        ROOT / ".opencode" / "skill" / "oc-crawl-book" / "SKILL.md",
+        ROOT / ".codex" / "skills" / "codex-crawl-book" / "SKILL.md",
+        ROOT / ".agent" / "agents" / "ag_translator.md",
+        ROOT / ".claude" / "agents" / "cc_translator.md",
+        ROOT / ".opencode" / "agent" / "oc-translator.md",
+        ROOT / ".codex" / "agents" / "codex_translator.md",
+    ]
+    for path in generated_paths:
+        assert path.read_text(encoding="utf-8").startswith("---"), path
+
+
+def test_opencode_translate_adapter_uses_embedded_loop_not_coordinator():
+    text = (
+        ROOT / ".opencode" / "skill" / "oc-translate-book" / "SKILL.md"
+    ).read_text(encoding="utf-8")
+    assert "ag_coordinator" not in text
+    assert "cc_coordinator" not in text
+    assert "spawns a **Coordinator Subagent**" not in text

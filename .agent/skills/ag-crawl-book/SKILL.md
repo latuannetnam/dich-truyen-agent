@@ -1,11 +1,11 @@
-<!-- GENERATED from .harness/source by tools/sync_harness_adapters.py. Do not edit directly. -->
-
 ---
 name: "ag-crawl-book"
 description: "Use when running the crawl-book phase of the Chinese-to-Vietnamese novel translation pipeline in the ag harness."
 metadata:
   short-description: "Use when running the crawl-book phase of the Chinese-to-Vietnamese novel translation pipeline in the ag harness."
 ---
+
+<!-- GENERATED from .harness/source by tools/sync_harness_adapters.py. Do not edit directly. -->
 
 # AG-Crawl Book
 

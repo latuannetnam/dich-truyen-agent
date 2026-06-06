@@ -1,9 +1,9 @@
-<!-- GENERATED from .harness/source by tools/sync_harness_adapters.py. Do not edit directly. -->
-
 ---
 name: codex-export-book
 description: "Use when running the export-book phase of the Chinese-to-Vietnamese novel translation pipeline in the codex harness."
 ---
+
+<!-- GENERATED from .harness/source by tools/sync_harness_adapters.py. Do not edit directly. -->
 
 # Codex-Export Book
 

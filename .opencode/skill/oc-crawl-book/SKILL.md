@@ -1,9 +1,9 @@
-<!-- GENERATED from .harness/source by tools/sync_harness_adapters.py. Do not edit directly. -->
-
 ---
 name: oc-crawl-book
 description: "Use when running the crawl-book phase of the Chinese-to-Vietnamese novel translation pipeline in the oc harness."
 ---
+
+<!-- GENERATED from .harness/source by tools/sync_harness_adapters.py. Do not edit directly. -->
 
 # OC-Crawl Book
 

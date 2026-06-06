@@ -1,11 +1,11 @@
-<!-- GENERATED from .harness/source by tools/sync_harness_adapters.py. Do not edit directly. -->
-
 ---
 name: "ag-check-translation"
 description: "Use when running the check-translation phase of the Chinese-to-Vietnamese novel translation pipeline in the ag harness."
 metadata:
   short-description: "Use when running the check-translation phase of the Chinese-to-Vietnamese novel translation pipeline in the ag harness."
 ---
+
+<!-- GENERATED from .harness/source by tools/sync_harness_adapters.py. Do not edit directly. -->
 
 # AG-Check Translation
 
