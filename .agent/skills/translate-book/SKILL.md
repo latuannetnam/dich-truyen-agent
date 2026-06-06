@@ -78,7 +78,12 @@ invoke_subagent({
   ]
 })
 ```
-When the Coordinator completes its batch, repeat Step 2 until the book is completed.
+
+> [!IMPORTANT]
+> **Enforced Stateless Iteration:**
+> 1. **Strict Batch Limit:** You must NEVER instruct a single Coordinator to translate the entire book. You must always specify a strict limit (e.g., 20 chapters) in your prompt.
+> 2. **Fresh Instances:** When the Coordinator completes its batch, you must call the `invoke_subagent` tool AGAIN to spawn a completely NEW Coordinator instance. Do not send follow-up instructions to the previous subagent. 
+> 3. **Infinite Loop:** Repeat this cycle of spawning fresh Coordinators until the progress check returns "completed".
 
 ### Step 3: The Coordinator Micro-Loop
 **The following steps (3 to 8) are executed purely by the Coordinator Subagent.**
