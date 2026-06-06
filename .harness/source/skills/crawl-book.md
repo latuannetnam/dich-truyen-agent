@@ -1,11 +1,11 @@
 # {SKILL_TITLE}
 
-Crawl a Chinese novel sequentially and resume downloads into a local workspace using robust static parsing and headless browser fallback. This is the OpenCode-native mirror of `.claude/skills/crawl-book/SKILL.md` - same CLI commands, adapted for the OpenCode runtime (`bash` tool, `read` tool, PowerShell on Windows).
+Crawl a Chinese novel sequentially and resume downloads into a local workspace using robust static parsing and headless browser fallback. Use the active harness command-execution capability for CLI commands and the active harness file-reading capability for bounded report inspection.
 
 ## Workflow
 
 1. **Initialize or Resume Crawl**:
-   Execute the deterministic crawl helper via the `bash` tool:
+   Execute the deterministic crawl helper:
    ```powershell
    $env:PYTHONUTF8=1
    uv run python main.py crawl-book --books-root books --slug <book-slug> --source-url <source-url> [--style <style-name>] [--max-chapters <limit>] [--chapter-delay-seconds <delay>]
@@ -38,7 +38,7 @@ Crawl a Chinese novel sequentially and resume downloads into a local workspace u
    - **Validation Overrides**: When short author notice chapters or status updates (e.g., 70-80 characters) trigger chapter length warnings, edit the local `crawl-profile.yaml` inside the workspace to lower `min_chapter_characters` (e.g., set to `20`) to allow these chapters to pass validation.
 
 4. **Verify and Audit the Report**:
-   Inspect the structured crawl report written under `reports/crawl.yaml` using the `read` tool.
+   Inspect the structured crawl report written under `reports/crawl.yaml` using bounded file-reading.
    - Verify completed, discovered, and failed counts.
    - Review warning residue findings or chapter length anomalies.
 
@@ -51,9 +51,9 @@ Crawl a Chinese novel sequentially and resume downloads into a local workspace u
    - Approval evidence will cover `reports/crawl.yaml` and every raw file in download scope.
    - The checkpoint is saved under `checkpoints/crawl-approved.yaml` and is verified by downstream phases.
 
-## Notes for OpenCode Runtime
+## Runtime Notes
 
-- Use the **`bash` tool** (not the Claude `Bash`) to execute CLI commands.
-- Use the **`read` tool** to inspect `reports/crawl.yaml`, `chapters.yaml`, and `state.yaml`.
+- Use the active harness command tool to execute CLI commands.
+- Use the active harness file reader to inspect `reports/crawl.yaml`, `chapters.yaml`, and `state.yaml`.
 - Do NOT read raw Chinese chapter files (`books/<book-slug>/raw/*.txt`) into your main context - they overflow the window. Trust the CLI report summaries.
-- The `permission.bash` rules in `opencode.json` block any bash command that references banned external LLM endpoints, env vars, or import patterns (declarative guardrail, replaces the Claude PreToolUse hook).
+- Do not run commands that reference banned external LLM endpoints, env vars, or import patterns. Use the native harness translator subagent for translation work.

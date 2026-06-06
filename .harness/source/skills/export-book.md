@@ -1,8 +1,8 @@
 # {SKILL_TITLE}
 
-This skill compiles a sequential, QA-approved translation workspace into conformant canonical EPUB and AZW3 ebook formats by default, and derives MOBI and PDF only if explicitly requested. This is the OpenCode-native mirror of `.claude/skills/export-book/SKILL.md`.
+This skill compiles a sequential, QA-approved translation workspace into conformant canonical EPUB and AZW3 ebook formats by default, and derives MOBI and PDF only if explicitly requested.
 
-## CLI Usage (bash tool)
+## CLI Usage
 
 ```powershell
 # Default: generate canonical EPUB + AZW3 only (enforces QA approval checkpoint)
@@ -31,8 +31,8 @@ $env:DICH_TRUYEN_CALIBRE_PATH
 - Derivative formats are written to the same directory as `books/<book-slug>/exports/<book-slug>.<format>`.
 - Export results are logged to `books/<book-slug>/reports/results/export-book.yaml`.
 
-## Notes for OpenCode Runtime
+## Runtime Notes
 
-- The export command refuses to run without a valid `qa-approved` checkpoint. If it blocks, run the `oc-check-translation` skill first.
-- Use the `read` tool to inspect `reports/results/export-book.yaml` for the per-format success status and any EPUBCheck warnings.
+- The export command refuses to run without a valid `qa-approved` checkpoint. If it blocks, run the active harness check-translation skill first.
+- Use bounded file-reading to inspect `reports/results/export-book.yaml` for the per-format success status and any EPUBCheck warnings.
 - Do not attempt to validate or modify the resulting `.epub` files by hand - trust the EPUBCheck pipeline.
