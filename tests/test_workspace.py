@@ -29,6 +29,28 @@ def test_initialize_workspace_creates_documented_layout(
     assert all(path.exists() for path in (paths.book, paths.chapters, paths.state, paths.style))
 
 
+def test_update_book_metadata(
+    books_root: Path,
+    metadata: BookMetadata,
+    catalog: ChapterCatalog,
+    style: TranslationStyle,
+) -> None:
+    workspace_root = initialized_workspace(books_root, metadata, catalog, style)
+    from dich_truyen_agent.workspace import update_book_metadata
+    
+    result = update_book_metadata(
+        workspace_root,
+        translated_title="Tiêu đề đã dịch",
+        translated_author="Tác giả đã dịch",
+    )
+    assert result.status is OperationStatus.OK
+    
+    paths = workspace_paths(books_root, metadata.book_slug)
+    updated_meta = load_yaml_model(paths.book, BookMetadata)
+    assert updated_meta.translated_title == "Tiêu đề đã dịch"
+    assert updated_meta.translated_author == "Tác giả đã dịch"
+
+
 def test_initialize_refuses_overwrite(
     books_root: Path,
     metadata: BookMetadata,

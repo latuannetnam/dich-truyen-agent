@@ -84,6 +84,30 @@ def initialize_workspace(
     return _ok("workspace initialized", paths, state)
 
 
+def update_book_metadata(
+    workspace_root: Path,
+    translated_title: str,
+    translated_author: str | None = None,
+) -> OperationResult:
+    try:
+        workspace_root = workspace_root.resolve()
+        paths = workspace_paths(workspace_root.parent, workspace_root.name)
+        
+        metadata = load_yaml_model(paths.book, BookMetadata)
+        metadata.translated_title = translated_title
+        metadata.translated_author = translated_author
+        
+        atomic_write_yaml(paths.book, metadata)
+        
+        state = load_yaml_model(paths.state, BookState)
+        return _ok("book metadata updated successfully", paths, state)
+    except Exception as error:
+        return OperationResult(
+            status=OperationStatus.ERROR,
+            reason=f"Failed to update book metadata: {error}",
+        )
+
+
 def validate_catalog_state(catalog: ChapterCatalog, state: BookState) -> None:
     catalog_ids = {chapter.chapter_id for chapter in catalog.chapters}
     state_ids = {chapter.chapter_id for chapter in state.chapters}

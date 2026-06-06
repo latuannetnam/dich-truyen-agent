@@ -165,3 +165,39 @@ def test_cli_validate_crawl_profile(tmp_path: Path) -> None:
     res = run_command(args)
     assert res.status is OperationStatus.OK
     assert "is valid" in res.reason
+
+
+def test_update_book_metadata_cli(tmp_path: Path) -> None:
+    args = build_parser().parse_args(
+        [
+            "init-book",
+            "--books-root",
+            str(tmp_path / "books"),
+            "--slug",
+            "demo",
+            "--source-url",
+            "https://example.com/book",
+            "--title",
+            "Demo",
+        ]
+    )
+    run_command(args)
+    
+    update_args = build_parser().parse_args(
+        [
+            "update-book-metadata",
+            "--workspace",
+            str(tmp_path / "books" / "demo"),
+            "--translated-title",
+            "Tiêu đề đã dịch",
+            "--translated-author",
+            "Tác giả đã dịch",
+        ]
+    )
+    result = run_command(update_args)
+    assert result.status is OperationStatus.OK
+    
+    from dich_truyen_agent.models import BookMetadata
+    metadata = load_yaml_model(tmp_path / "books" / "demo" / "book.yaml", BookMetadata)
+    assert metadata.translated_title == "Tiêu đề đã dịch"
+    assert metadata.translated_author == "Tác giả đã dịch"

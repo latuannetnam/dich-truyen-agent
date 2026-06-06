@@ -117,6 +117,11 @@ def build_parser() -> argparse.ArgumentParser:
     export_cmd.add_argument("--workspace", type=Path, required=True)
     export_cmd.add_argument("--formats", default="epub,azw3")
 
+    update_meta = subparsers.add_parser("update-book-metadata")
+    update_meta.add_argument("--workspace", type=Path, required=True)
+    update_meta.add_argument("--translated-title", required=True)
+    update_meta.add_argument("--translated-author")
+
     return parser
 
 
@@ -452,6 +457,20 @@ def run_command(args: argparse.Namespace) -> OperationResult:
             result = OperationResult(
                 status=OperationStatus.ERROR,
                 reason=f"Export failed: {e}",
+            )
+    elif args.command == "update-book-metadata":
+        from dich_truyen_agent.workspace import update_book_metadata
+        
+        try:
+            result = update_book_metadata(
+                args.workspace,
+                args.translated_title,
+                args.translated_author,
+            )
+        except Exception as e:
+            result = OperationResult(
+                status=OperationStatus.ERROR,
+                reason=f"Update metadata failed: {e}",
             )
     else:
         raise ValueError(f"unsupported command: {args.command}")

@@ -122,6 +122,25 @@ def test_compile_epub_in_memory_and_invariants(export_workspace: Path) -> None:
         verify_epub_invariants(bad_bytes)
 
 
+def test_compile_epub_with_translated_metadata(export_workspace: Path) -> None:
+    paths = workspace_paths(export_workspace.parent, export_workspace.name)
+    book_metadata = load_yaml_model_helper(paths.book, BookMetadata)
+    book_metadata.translated_title = "Tiêu đề đã dịch"
+    book_metadata.translated_author = "Tác giả đã dịch"
+    catalog = load_yaml_model_helper(paths.chapters, ChapterCatalog)
+
+    epub_bytes = compile_epub_in_memory(export_workspace, book_metadata, catalog)
+    assert len(epub_bytes) > 0
+    verify_epub_invariants(epub_bytes)
+
+    import zipfile
+    import io
+    with zipfile.ZipFile(io.BytesIO(epub_bytes)) as zf:
+        opf_content = zf.read("EPUB/package.opf").decode("utf-8")
+        assert "<dc:title>Tiêu đề đã dịch</dc:title>" in opf_content
+        assert "<dc:creator>Tác giả đã dịch</dc:creator>" in opf_content
+
+
 def test_find_epubcheck(monkeypatch) -> None:
     # 1. Missing tool completely
     monkeypatch.delenv("DICH_TRUYEN_EPUBCHECK_PATH", raising=False)

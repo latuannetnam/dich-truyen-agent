@@ -34,7 +34,7 @@ def compile_epub_in_memory(
     # 1. Generate deterministic UUID based on source URL
     pub_id = str(uuid.uuid5(uuid.NAMESPACE_URL, book_metadata.source_url))
     modified_time = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
-    author = book_metadata.author or "Unknown"
+    author = book_metadata.translated_author or book_metadata.author or "Unknown"
 
     # 2. Build standard templates
     style_content = """body {
@@ -147,7 +147,7 @@ p {
 <package xmlns="http://www.idpf.org/2007/opf" unique-identifier="pub-id" version="3.0">
   <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
     <dc:identifier id="pub-id">urn:uuid:{pub_id}</dc:identifier>
-    <dc:title>{html.escape(book_metadata.title)}</dc:title>
+    <dc:title>{html.escape(book_metadata.translated_title or book_metadata.title)}</dc:title>
     <dc:language>vi</dc:language>
     <dc:creator>{html.escape(author)}</dc:creator>
     <meta property="dcterms:modified">{modified_time}</meta>

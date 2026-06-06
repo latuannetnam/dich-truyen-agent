@@ -19,6 +19,8 @@ class BookMetadata(PersistedModel):
     source_url: str
     title: str
     author: str | None = None
+    translated_title: str | None = None
+    translated_author: str | None = None
 
 
 class ChapterCatalogEntry(PersistedModel):

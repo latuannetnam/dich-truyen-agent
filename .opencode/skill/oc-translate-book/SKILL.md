@@ -39,6 +39,38 @@ uv run python main.py check-gate --workspace books/<book-slug> --type crawl-appr
 ```
 If this blocks or fails, stop and ask the user to approve the crawl first.
 
+### Step 1.5 — Verify and Translate Book Metadata
+Check if the book's metadata (`book.yaml`) has been translated.
+1. Read the contents of `books/<book-slug>/book.yaml` using your file reading tools.
+2. Check if `translated_title` and `translated_author` are populated.
+3. If they are missing or empty:
+   - Dispatch the built-in `general` subagent via `task()` to translate the book title and author:
+     ```python
+     task(
+       subagent_type="general",
+       description="Translate book title '<title>' and author '<author>'",
+       prompt="\"\"\"You are a highly specialized Chinese-to-Vietnamese novel translator. Translate the Chinese book title '<title>' and Chinese author name '<author>' into elegant Vietnamese Xianxia style.
+       
+       Return ONLY this JSON block:
+       {
+         \"translated_title\": \"<translated_title>\",
+         \"translated_author\": \"<translated_author>\"
+       }
+       If an error occurs, return:
+       {
+         \"translated_title\": null,
+         \"translated_author\": null,
+         \"error_message\": \"<error details>\"
+       }\"\"\"
+     )
+     ```
+   - Extract `translated_title` and `translated_author` from the subagent's response.
+   - Persist the translated metadata by running:
+     ```powershell
+     $env:PYTHONUTF8=1
+     uv run python main.py update-book-metadata --workspace books/<book-slug> --translated-title "<translated_title>" --translated-author "<translated_author>"
+     ```
+
 ### Step 2 — Query next pending chapter
 ```powershell
 $env:PYTHONUTF8=1

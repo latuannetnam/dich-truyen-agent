@@ -32,6 +32,30 @@ uv run python main.py check-gate --workspace books/<book-slug> --type crawl-appr
 ```
 If this command blocks or fails, stop the workflow and guide the user to review and approve the crawled raw contents first.
 
+### Step 1.5: Verify and Translate Book Metadata
+The Main Agent checks if the book's metadata (`book.yaml`) has been translated.
+1. Read the contents of `books/<book-slug>/book.yaml` using the `view_file` tool.
+2. Check if `translated_title` and `translated_author` are populated.
+3. If they are missing or empty:
+   - Spawn a specialized metadata translation subagent using the native `invoke_subagent` tool:
+     ```json
+     invoke_subagent({
+       "Subagents": [
+         {
+           "Prompt": "Translate the Chinese title '<title>' and author '<author>' into elegant Vietnamese Xianxia style. Ensure you return ONLY the specified JSON format.",
+           "Role": "Chinese-to-Vietnamese Xianxia/Tu Chan Translator",
+           "TypeName": "metadata_translator"
+         }
+       ]
+     })
+     ```
+   - Extract `translated_title` and `translated_author` from the subagent's JSON response.
+   - Persist the translated metadata to the workspace by running:
+     ```bash
+     $env:PYTHONUTF8=1
+     uv run python main.py update-book-metadata --workspace books/<book-slug> --translated-title "<translated_title>" --translated-author "<translated_author>"
+     ```
+
 ### Step 2: Query Sequential Progress and Next Target
 Check overall translation progress and fetch the exact next pending chapter ID:
 ```bash
