@@ -1,5 +1,5 @@
 ---
-name: translator
+name: ag_translator
 description: Use proactively whenever you need to translate a single Chinese novel chapter into Vietnamese with strict Xianxia/Tu Chan (Tiên Hiệp / Tu Chân) style, glossary fidelity, and lexical sandbox enforcement. Dispatch one instance per chapter — never reuse the same instance for multiple chapters, and never use this agent for QA, crawling, or export.
 tools: Read, Write, Glob, Grep
 model: inherit

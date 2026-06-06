@@ -1,5 +1,5 @@
 ---
-name: metadata_translator
+name: ag_metadata_translator
 description: Translate the Chinese book title and author name into Vietnamese Xianxia/Tu Chan style.
 tools: Read, Write
 model: inherit

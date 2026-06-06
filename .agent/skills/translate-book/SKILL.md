@@ -42,9 +42,9 @@ The Main Agent checks if the book's metadata (`book.yaml`) has been translated.
      invoke_subagent({
        "Subagents": [
          {
-           "Prompt": "Translate the Chinese title '<title>' and author '<author>' into elegant Vietnamese Xianxia style. Ensure you return ONLY the specified JSON format.",
+           "Prompt": "Translate the metadata for the book. Title: '<title>', Author: '<author>'",
            "Role": "Chinese-to-Vietnamese Xianxia/Tu Chan Translator",
-           "TypeName": "metadata_translator"
+           "TypeName": "ag_metadata_translator"
          }
        ]
      })
@@ -99,7 +99,7 @@ invoke_subagent({
     {
       "Prompt": "[Subagent Prompt]",
       "Role": "Chinese-to-Vietnamese Xianxia/Tu Chan Translator",
-      "TypeName": "translator"
+      "TypeName": "ag_translator"
     }
   ]
 })
@@ -108,90 +108,16 @@ invoke_subagent({
 The prompt payload passed to the subagent must match the following template, replacing all bracketed `[Absolute Path to ...]` placeholders with the resolved absolute paths:
 
 ```markdown
-You are a highly specialized Chinese-to-Vietnamese novel translator specializing in the **Tiên Hiệp (Xianxia) / Tu Chân (Cultivation)** genre. Your task is to produce a high-quality, professional, and elegant Vietnamese translation of the assigned chapter in literary context.
+Please translate the assigned chapter.
 
-## Context & Inputs
-You must read the following files to get all necessary context, guidelines, and rules:
-1. **Raw Chinese Text:** Read the raw source at `[Absolute Path to raw_path]`
-2. **Style Guidelines:** Read `[Absolute Path to style_path]` for tone and translation rules (always follow 'archaic' tone, guidelines, vocabulary mappings, and examples).
-3. **Glossary:** Read `[Absolute Path to glossary_path]` for terms (prefer matches in glossary over raw translations).
-4. **Previous Chapter Context:** Read `[Absolute Path to prev_translation_path]` if it is NOT null. If it is null, treat this as Chapter 1 (or a reset point) with no predecessor context.
-
-## Your Task Instructions:
-1. **Load Inputs:** Use your file reading tools to inspect the files listed above.
-2. **Inspect Raw Text:** Check the first 500 characters of the raw source for scrambling, anti-scraping paragraphs, or ads, and cleanly parse only the true chapter body.
-3. **Translate Chapter Title & Content:**
-   * **Title Translation Rule:** Translate the Chinese chapter title into a clean Vietnamese chapter title `title_vi`:
-     1. Convert chapter number prefixes: `第[N]章` must be translated to `Chương [N]`.
-     2. Translate the remaining Chinese characters of the chapter title into natural, capitalized Sino-Vietnamese (Hán-Việt) terms in Title Case (e.g. `天魔传说` -> `Thiên Ma Truyền Thuyết`).
-     3. Separate the number prefix and translated title with a single space: `Chương [N] [Translated Title]` (e.g., `Chương 1715 Thiên Ma Truyền Thuyết`). Do NOT use extra colons (`:`), hyphens (`-`), or brackets around the chapter number.
-   * **Translate Content:** Translate the entire Chinese source text into natural, high-quality Vietnamese prose.
-     * Apply all genre guidelines and vocabulary rules from the style guidelines and glossary.
-     * Maintain consistent name/pronoun styles matching the previous chapter context.
-     * Ensure the narrative tone matches the 'archaic' style defined in `style.yaml`.
-4. **Adhere to the Lexical Sandbox Rule:**
-   * **Strict Constraint:** DO NOT leak any English conjunctions, prepositions, or helper words into the translated Vietnamese output.
-   * **Programmatic Scan:** Before writing the file, you must explicitly scan your entire draft translation for common leaked English words. If any are found, replace them with their proper Vietnamese equivalents using this table:
-
-   | Banned English Word | Vietnamese Equivalent | Notes |
-   | :--- | :--- | :--- |
-   | but | nhưng | |
-   | and | và | |
-   | or | hoặc | |
-   | while | trong khi | |
-   | before | trước khi | |
-   | after | sau khi | |
-   | of | của | |
-   | to | đến / cho | depends on context |
-   | in | trong | |
-   | on | trên | |
-   | at | tại | |
-   | for | cho / vì | depends on context |
-   | with | với | |
-   | the | *(omit article)* | Vietnamese has no articles |
-   | here | đây | |
-   | now | bây giờ | |
-   | okay | được / OK | |
-
-   * **No Chinese Residue:** The translated narrative body MUST consist solely of natural Vietnamese prose. You must NEVER output original Chinese characters, bilingual annotations, or translator notes inside the body of the staging translation file. All Chinese term proposals must be strictly isolated to the separate proposals YAML file.
-5. **Write Target Files:** 
-   * **Staged Translation:** Write the complete translated Vietnamese text directly to `[Absolute Path to staging/chuong-{chapter_id:04d}-staged.txt]`.
-     * **Title Formatting:** The very first line of this file must contain the translated chapter title, formatted exactly as `# [title_vi]` (e.g., `# Chương 1715 Thiên Ma Truyền Thuyết`).
-     * Ensure there is a blank line immediately after this first line.
-   * **Staged Glossary Proposals:** If you find new Chinese names, factions, items, or terms that are missing from the glossary and had to be translated, write a staged proposals YAML file directly to `[Absolute Path to staging/chuong-{chapter_id:04d}-proposals.yaml]` containing structured dictionary entries:
-     ```yaml
-     [Chinese Term]:
-       translation: "[Vietnamese Mapping]"
-       category: "[character|sect|location|item|cultivation|other]"
-       note: "[Optional context]"
-     ```
-     If no proposals are made, do not create this proposals YAML file.
-6. **Self-Review:** Read your written files to verify:
-   * The first line matches `# [title_vi]` exactly.
-   * No raw Chinese remains.
-   * The Lexical Sandbox Rule is fully respected.
-
-Return ONLY a clean JSON block summarizing:
-```json
-{
-  "status": "success",
-  "chapter_id": [Chapter ID],
-  "title_vi": "[Translated Vietnamese Title]",
-  "character_count": [Count],
-  "proposals_count": [Count]
-}
-```
-If an error occurs or the translation cannot be completed, return:
-```json
-{
-  "status": "error",
-  "chapter_id": [Chapter ID],
-  "title_vi": null,
-  "character_count": 0,
-  "proposals_count": 0,
-  "error_message": "[Error description]"
-}
-```
+## Inputs
+- raw_path: [Absolute Path to raw_path]
+- style_path: [Absolute Path to style_path]
+- glossary_path: [Absolute Path to glossary_path]
+- prev_translation_path: [Absolute Path to prev_translation_path]
+- staged_txt: [Absolute Path to staging/chuong-{chapter_id:04d}-staged.txt]
+- staged_yaml: [Absolute Path to staging/chuong-{chapter_id:04d}-proposals.yaml]
+- chapter_id: [chapter_id]
 ```
 
 ### Step 6: Lightweight Staging Verification
