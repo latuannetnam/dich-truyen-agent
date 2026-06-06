@@ -139,9 +139,3 @@ If successful, the Coordinator loops back to Step 3 until its assigned batch lim
 * **Incorrect Metadata Updates:** Trying to manually search/replace inside `book.json` or `state.yaml`. Always use the CLI commands (`promote-chapter`, etc.) to update metadata.
 * **Using External LLM APIs:** Attempting to use Python or shell scripts to send raw text to external APIs (OpenAI, OpenRouter, etc.) instead of spawning a subagent. This is strictly prohibited and bypasses the native orchestration framework. Always use `invoke_subagent`.
 
-<!--
-Honesty contracts for tests:
-books/<book-slug>/
-reports/results/
-not implemented by Phase 1
--->
