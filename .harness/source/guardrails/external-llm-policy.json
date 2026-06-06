@@ -1,0 +1,23 @@
+{
+  "env_vars": [
+    "OPENAI_API_KEY",
+    "OPENROUTER_API_KEY",
+    "ANTHROPIC_API_KEY",
+    "GEMINI_API_KEY",
+    "DEEPSEEK_API_KEY"
+  ],
+  "endpoints": [
+    "api.openai.com",
+    "openrouter.ai",
+    "api.anthropic.com",
+    "generativelanguage.googleapis.com",
+    "api.deepseek.com"
+  ],
+  "imports": [
+    "openai",
+    "anthropic",
+    "google.generativeai",
+    "openrouter"
+  ],
+  "message": "Use the native harness translator subagent instead of external LLM APIs."
+}

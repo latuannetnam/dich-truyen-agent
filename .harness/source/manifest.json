@@ -1,0 +1,12 @@
+{
+  "harnesses": ["ag", "cc", "oc", "codex"],
+  "prefixes": {
+    "ag": "ag",
+    "cc": "cc",
+    "oc": "oc",
+    "codex": "codex"
+  },
+  "skills": ["crawl-book", "translate-book", "check-translation", "export-book"],
+  "agents": ["translator", "metadata-translator", "coordinator"],
+  "generated_header": "<!-- GENERATED from .harness/source by tools/sync_harness_adapters.py. Do not edit directly. -->"
+}
