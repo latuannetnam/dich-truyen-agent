@@ -1,3 +1,5 @@
+# GENERATED from .harness/source by tools/sync_harness_adapters.py. Do not edit directly.
+
 import sys
 import json
 import re

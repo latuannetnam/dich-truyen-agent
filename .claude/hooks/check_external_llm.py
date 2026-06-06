@@ -1,3 +1,5 @@
+# GENERATED from .harness/source by tools/sync_harness_adapters.py. Do not edit directly.
+
 """PreToolUse hook: block any Bash command that tries to call an external LLM API.
 
 Mirrors `.agents/hooks/check_external_llm.py` (Antigravity), adapted for the Claude Code

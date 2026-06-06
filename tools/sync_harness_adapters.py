@@ -29,6 +29,20 @@ def generated_header(manifest: dict) -> str:
     return manifest["generated_header"] + "\n\n"
 
 
+def python_generated_header(manifest: dict) -> str:
+    header = manifest["generated_header"]
+    if header.startswith("<!--") and header.endswith("-->"):
+        header = header[4:-3].strip()
+    return f"# {header}\n\n"
+
+
+def strip_existing_generated_header(content: str, manifest: dict) -> str:
+    for header in (generated_header(manifest), python_generated_header(manifest)):
+        if content.startswith(header):
+            return content[len(header) :]
+    return content
+
+
 def skill_title(harness: str, skill: str) -> str:
     prefix = {"ag": "AG", "cc": "CC", "oc": "OC", "codex": "Codex"}[harness]
     words = " ".join(part.capitalize() for part in skill.split("-"))
@@ -265,6 +279,20 @@ def render_opencode_json(manifest: dict) -> RenderedFile:
     return RenderedFile(ROOT / "opencode.json", json.dumps(cfg, indent=2) + "\n")
 
 
+def render_antigravity_hook(manifest: dict) -> RenderedFile:
+    current = read_text(ROOT / ".agents" / "hooks" / "check_external_llm.py")
+    body = strip_existing_generated_header(current, manifest)
+    content = python_generated_header(manifest) + body.rstrip() + "\n"
+    return RenderedFile(ROOT / ".agents" / "hooks" / "check_external_llm.py", content)
+
+
+def render_claude_hook(manifest: dict) -> RenderedFile:
+    current = read_text(ROOT / ".claude" / "hooks" / "check_external_llm.py")
+    body = strip_existing_generated_header(current, manifest)
+    content = python_generated_header(manifest) + body.rstrip() + "\n"
+    return RenderedFile(ROOT / ".claude" / "hooks" / "check_external_llm.py", content)
+
+
 def render_all() -> list[RenderedFile]:
     manifest = read_json(SOURCE / "manifest.json")
     rendered: list[RenderedFile] = []
@@ -277,6 +305,8 @@ def render_all() -> list[RenderedFile]:
                 rendered.append(agent_file)
     rendered.extend(render_guides(manifest))
     rendered.append(render_opencode_json(manifest))
+    rendered.append(render_antigravity_hook(manifest))
+    rendered.append(render_claude_hook(manifest))
     return rendered
 
 

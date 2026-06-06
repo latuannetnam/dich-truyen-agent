@@ -4,6 +4,8 @@ import sys
 from pathlib import Path
 
 HOOK_SCRIPT = str(Path(".agents/hooks/check_external_llm.py").absolute())
+POLICY = Path(".harness/source/guardrails/external-llm-policy.json")
+GENERATED_HEADER = "GENERATED from .harness/source"
 
 def run_hook(stdin_data):
     res = subprocess.run(
@@ -59,3 +61,21 @@ def test_hook_denies_banned_imports(tmp_path):
     result = run_hook(payload)
     assert result["decision"] == "deny"
     assert "Banned library import 'openai'" in result["reason"]
+
+
+def test_antigravity_hook_uses_shared_policy_terms():
+    policy = POLICY.read_text(encoding="utf-8")
+    hook = Path(".agents/hooks/check_external_llm.py").read_text(encoding="utf-8")
+    assert "api.openai.com" in policy
+    assert "api.openai.com" in hook
+    assert "OPENAI_API_KEY" in hook
+    assert GENERATED_HEADER in hook
+
+
+def test_claude_hook_uses_shared_policy_terms():
+    policy = POLICY.read_text(encoding="utf-8")
+    hook = Path(".claude/hooks/check_external_llm.py").read_text(encoding="utf-8")
+    assert "api.openai.com" in policy
+    assert "api.openai.com" in hook
+    assert "OPENAI_API_KEY" in hook
+    assert GENERATED_HEADER in hook
