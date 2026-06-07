@@ -8,7 +8,7 @@ Provide programmatic enforcement that prevents the main agent (or subagents) fro
 ### 1. Workspace Hooks Configuration
 Create `.agents/hooks.json` to register a hook intercepting `run_command`.
 
-#### [NEW] [hooks.json](file:///d:/latuan/Programming/dich-truyen-agent/.agents/hooks.json)
+#### [NEW] [hooks.json](../../../.agents/hooks.json)
 ```json
 {
   "PreToolUse": [
@@ -31,7 +31,7 @@ Create `.agents/hooks/check_external_llm.py` which executes during `PreToolUse` 
 - Inspect the source code of those `.py` files for banned SDK imports or API endpoint hostnames.
 - Return `deny` if violations are found, blocking execution.
 
-#### [NEW] [check_external_llm.py](file:///d:/latuan/Programming/dich-truyen-agent/.agents/hooks/check_external_llm.py)
+#### [NEW] [check_external_llm.py](../../../.agents/hooks/check_external_llm.py)
 ```python
 import sys
 import json

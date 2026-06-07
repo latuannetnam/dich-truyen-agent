@@ -38,7 +38,7 @@
 
 | Option | Description | Selected |
 |--------|-------------|----------|
-| **Option A** | Look for `ebook-convert` in PATH and fallback paths (e.g. `C:\Program Files\Calibre2\` on Windows). If missing, skip AZW3/MOBI/PDF derivatives with a warning, but successfully export the canonical EPUB. | ✓ |
+| **Option A** | Look for `ebook-convert` in PATH and fallback paths (e.g. `Program Files/Calibre2/` on Windows). If missing, skip AZW3/MOBI/PDF derivatives with a warning, but successfully export the canonical EPUB. | ✓ |
 | **Option B** | Strictly enforce Calibre presence. If `ebook-convert` is missing, fail the entire export process. | |
 | **Option C** | Accept a `--formats` flag. Only fail or warn if a requested derivative format (e.g. `mobi`) is explicitly selected but `ebook-convert` is missing. | |
 

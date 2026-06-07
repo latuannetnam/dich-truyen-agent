@@ -6,7 +6,7 @@
 
 ## 1. Goal & Context
 
-The goal is to streamline and rewrite [AGENTS.md](file:///d:/latuan/Programming/dich-truyen-agent/AGENTS.md) to serve as a high-level orchestration guide for the Antigravity agent-native novel translation pipeline (Crawl -> Translate -> QA -> Export).
+The goal is to streamline and rewrite [AGENTS.md](../../../AGENTS.md) to serve as a high-level orchestration guide for the Antigravity agent-native novel translation pipeline (Crawl -> Translate -> QA -> Export).
 
 We will remove all unrelated developer stack details, GSD command instructions, troubleshooting guides, and empty conventions placeholders. The target of this document is the Antigravity Main Agent coordinating the workflow.
 
@@ -20,9 +20,9 @@ Instead of repeating the details of each step or just listing a CLI reference:
 
 ## 3. Proposed File Changes
 
-### [MODIFY] [AGENTS.md](file:///d:/latuan/Programming/dich-truyen-agent/AGENTS.md)
+### [MODIFY] [AGENTS.md](../../../AGENTS.md)
 
-Replace the entire content of [AGENTS.md](file:///d:/latuan/Programming/dich-truyen-agent/AGENTS.md) with the new orchestration guide structure:
+Replace the entire content of [AGENTS.md](../../../AGENTS.md) with the new orchestration guide structure:
 1. **System Mission & Orchestration Flow**
 2. **Pipeline Skills & Entry Points**
 3. **Global Orchestration Guardrails**
@@ -32,7 +32,7 @@ Replace the entire content of [AGENTS.md](file:///d:/latuan/Programming/dich-tru
 ## 4. Verification Plan
 
 ### Manual Verification
-- Review the rewritten [AGENTS.md](file:///d:/latuan/Programming/dich-truyen-agent/AGENTS.md) file to verify that:
+- Review the rewritten [AGENTS.md](../../../AGENTS.md) file to verify that:
   - All GSD-specific workflows and empty sections are removed.
   - The Mermaid diagram is syntactically correct.
   - All file links to `SKILL.md` files are correct and clickable.

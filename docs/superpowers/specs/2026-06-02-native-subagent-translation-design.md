@@ -16,7 +16,7 @@ By strictly using the native Antigravity subagent invocation tool (`invoke_subag
 
 ### [Component] `.agent/skills/translate-book/SKILL.md`
 
-We will rewrite [SKILL.md](file:///d:/latuan/Programming/dich-truyen-agent/.agent/skills/translate-book/SKILL.md) to define:
+We will rewrite [SKILL.md](../../../.agent/skills/translate-book/SKILL.md) to define:
 * A structured sequential orchestration loop.
 * Clear instructions for constructing absolute file paths before dispatching subagents.
 * The exact native `invoke_subagent` tool call signature.

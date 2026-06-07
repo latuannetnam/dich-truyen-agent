@@ -248,7 +248,7 @@ user-facing workflow orchestration.
 - https://chardet.readthedocs.io/ - fallback encoding detection
 - https://docs.pydantic.dev/latest/concepts/models/ - strict model validation
 - https://docs.pydantic.dev/latest/concepts/pydantic_settings/ - settings contracts
-- `D:/latuan/Programming/dich-truyen-tien-hiep/src/dich_truyen/crawler/` - legacy functional reference
+- `../dich-truyen-tien-hiep/src/dich_truyen/crawler/` - legacy functional reference
 
 ## RESEARCH COMPLETE
 

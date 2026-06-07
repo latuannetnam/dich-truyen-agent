@@ -300,8 +300,8 @@ as `dcterms:modified`; NCX alone is legacy.
 ## Sources
 
 - `.planning/PROJECT.md` - approved product boundaries
-- `D:\latuan\Programming\dich-truyen-tien-hiep\docs\ARCHITECTURE.md` - old pipeline reference
-- `D:\latuan\Programming\dich-truyen-tien-hiep\.agents\skills\translate-error-chapters\SKILL.md` - prior worker isolation experiment
+- `../dich-truyen-tien-hiep/docs/ARCHITECTURE.md` - old pipeline reference
+- `../dich-truyen-tien-hiep/.agents/skills/translate-error-chapters/SKILL.md` - prior worker isolation experiment
 - https://www.w3.org/TR/epub-33/ - EPUB 3.3 packaging, navigation, and metadata requirements
 - https://github.com/w3c/epubcheck - official EPUB conformance checker
 - https://playwright.dev/python/docs/intro - Playwright as general-purpose browser automation

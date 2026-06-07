@@ -32,7 +32,7 @@ completed: 2026-06-01
   - Performs validation checks on temporary packages before canonical promotion.
   - Aborts compilation and prints detailed errors when EPUBCheck reports issues or if EPUBCheck/Java is completely missing.
 - Programmed the Calibre converter `run_calibre_convert` in `src/dich_truyen_agent/export.py`:
-  - Looks up Calibre `ebook-convert` utility in system PATH or Windows standard installation folders (e.g. `C:\Program Files\Calibre2\`).
+  - Looks up Calibre `ebook-convert` utility in system PATH or Windows standard installation folders (e.g. `Program Files/Calibre2/`).
   - Calls conversion subprocesses to export `AZW3`, `MOBI`, and `PDF` derivatives in a sandbox-safe manner.
   - Skips derivative conversions with a clear warning if Calibre is missing without interrupting EPUB packaging.
 

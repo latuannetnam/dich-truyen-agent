@@ -191,8 +191,8 @@ exists.
 ## Sources
 
 - `.planning/PROJECT.md` - approved scope and review gates
-- `D:\latuan\Programming\dich-truyen-tien-hiep\docs\ARCHITECTURE.md` - old application lessons
-- `D:\latuan\Programming\dich-truyen-tien-hiep\.agents\skills\translate-error-chapters\SKILL.md` - prior worker isolation lessons
+- `../dich-truyen-tien-hiep/docs/ARCHITECTURE.md` - old application lessons
+- `../dich-truyen-tien-hiep/.agents/skills/translate-error-chapters/SKILL.md` - prior worker isolation lessons
 - https://www.w3.org/TR/epub-33/ - EPUB 3.3 packaging and navigation requirements
 - https://github.com/w3c/epubcheck - official validation tool
 - https://playwright.dev/python/docs/intro - browser automation installation

@@ -19,7 +19,7 @@
 ## Legacy Reference Extracts
 
 Read-only reference:
-`D:/latuan/Programming/dich-truyen-tien-hiep/src/dich_truyen/crawler/`
+`../dich-truyen-tien-hiep/src/dich_truyen/crawler/`
 
 | Legacy module | Reuse concept | Do not copy |
 |---------------|---------------|-------------|

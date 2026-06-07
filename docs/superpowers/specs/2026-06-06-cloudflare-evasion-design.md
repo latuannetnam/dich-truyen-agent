@@ -9,13 +9,13 @@ Improve the `crawl-book` skill instructions (`.agent/skills/crawl-book/SKILL.md`
 
 ## Proposed Changes
 
-### 1. Main Skill File: [.agent/skills/crawl-book/SKILL.md](file:///d:/latuan/Programming/dich-truyen-agent/.agent/skills/crawl-book/SKILL.md)
+### 1. Main Skill File: [.agent/skills/crawl-book/SKILL.md](../../../.agent/skills/crawl-book/SKILL.md)
 Add a dedicated "Handling Cloudflare, Anti-Bot & Evasions" section explaining the browser setup, evasion rules, cookie pre-fetching, self-healing loop, and character threshold adjustments.
 
-### 2. Claude Code Mirror: [.claude/skills/crawl-book/SKILL.md](file:///d:/latuan/Programming/dich-truyen-agent/.claude/skills/crawl-book/SKILL.md)
+### 2. Claude Code Mirror: [.claude/skills/crawl-book/SKILL.md](../../../.claude/skills/crawl-book/SKILL.md)
 Mirror the same additions to keep the Claude Code skill folder synchronized.
 
-### 3. OpenCode Mirror: [.opencode/skill/oc-crawl-book/SKILL.md](file:///d:/latuan/Programming/dich-truyen-agent/.opencode/skill/oc-crawl-book/SKILL.md)
+### 3. OpenCode Mirror: [.opencode/skill/oc-crawl-book/SKILL.md](../../../.opencode/skill/oc-crawl-book/SKILL.md)
 Mirror the same additions to keep the OpenCode-native skill folder synchronized.
 
 ## Evasion Mechanics Details

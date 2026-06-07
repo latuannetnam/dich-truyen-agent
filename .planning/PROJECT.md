@@ -4,7 +4,7 @@
 
 Dich Truyen Agent is an Antigravity-first, agent-native workflow for crawling Chinese novels,
 translating them into Vietnamese, checking translation quality, and exporting ebooks. It
-rebuilds the useful behavior of the existing `D:\latuan\Programming\dich-truyen-tien-hiep`
+rebuilds the useful behavior of the existing `../dich-truyen-tien-hiep`
 application around coding-agent skills and small deterministic Python helpers instead of a
 long-running application UI or API.
 
@@ -59,7 +59,7 @@ checkpoints while keeping each agent task small, inspectable, and recoverable.
 
 ## Context
 
-The previous application at `D:\latuan\Programming\dich-truyen-tien-hiep` is the functional
+The previous application at `../dich-truyen-tien-hiep` is the functional
 reference. It contains a Python CLI, FastAPI backend, Next.js frontend, tests, and real book
 workspaces. Its useful behaviors include:
 

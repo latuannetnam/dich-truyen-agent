@@ -11,7 +11,7 @@ The current repository is intentionally minimal: `main.py` is a hello-world entr
 `pyproject.toml` is an empty Python 3.13 `uv` scaffold. There are no package modules, tests, or
 product skills to copy. Phase 1 establishes the first stable implementation conventions.
 
-Legacy references from `D:\latuan\Programming\dich-truyen-tien-hiep` are behavioral references
+Legacy references from `../dich-truyen-tien-hiep` are behavioral references
 only. Do not port its combined `BookProgress` schema or direct canonical writes wholesale.
 
 ## File Classification
@@ -42,8 +42,8 @@ only. Do not port its combined `BookProgress` schema or direct canonical writes 
 ### `src/dich_truyen_agent/models.py` (model, transform)
 
 **Legacy behavioral references:**
-- `D:\latuan\Programming\dich-truyen-tien-hiep\src\dich_truyen\translator\style.py:13`
-- `D:\latuan\Programming\dich-truyen-tien-hiep\src\dich_truyen\utils\progress.py:12`
+- `../dich-truyen-tien-hiep/src/dich_truyen/translator/style.py:13`
+- `../dich-truyen-tien-hiep/src/dich_truyen/utils/progress.py:12`
 
 Copy the Pydantic-v2 modeling style, `Field` descriptions, enums for bounded statuses, and
 `model_validate()` boundary validation:
@@ -85,7 +85,7 @@ fallback for Chinese-only titles.
 
 ### `src/dich_truyen_agent/storage.py` (utility, file-I/O)
 
-**Legacy non-example:** `D:\latuan\Programming\dich-truyen-tien-hiep\src\dich_truyen\utils\progress.py:110`
+**Legacy non-example:** `../dich-truyen-tien-hiep/src/dich_truyen/utils/progress.py:110`
 
 Do not copy this direct canonical write:
 
@@ -102,7 +102,7 @@ them.
 
 ### `src/dich_truyen_agent/workspace.py` (service, file-I/O)
 
-**Legacy partial reference:** `D:\latuan\Programming\dich-truyen-tien-hiep\src\dich_truyen\utils\progress.py:117`
+**Legacy partial reference:** `../dich-truyen-tien-hiep/src/dich_truyen/utils/progress.py:117`
 
 Legacy load behavior validates parsed persisted data:
 
@@ -130,7 +130,7 @@ path, and approval path.
 
 ### `src/dich_truyen_agent/styles.py` (service, file-I/O)
 
-**Legacy behavioral reference:** `D:\latuan\Programming\dich-truyen-tien-hiep\src\dich_truyen\translator\style.py:72`
+**Legacy behavioral reference:** `../dich-truyen-tien-hiep/src/dich_truyen/translator/style.py:72`
 
 Copy the safe-load plus Pydantic-validation boundary:
 
@@ -174,7 +174,7 @@ Use offline `pytest` with `tmp_path`. Organize tests by owning module:
 
 ### `templates/styles/tien_hiep.yaml` (config, file-I/O)
 
-**Legacy behavioral reference:** `D:\latuan\Programming\dich-truyen-tien-hiep\styles\tien_hiep.yaml`
+**Legacy behavioral reference:** `../dich-truyen-tien-hiep/styles/tien_hiep.yaml`
 
 Use the legacy YAML shape: `name`, `description`, `guidelines`, `vocabulary`, `tone`, and
 `examples`. Ship one reviewed bundled template. Workspace initialization copies a validated

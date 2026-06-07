@@ -166,9 +166,9 @@ Phases with standard patterns:
 
 ### Local Reference
 
-- `D:\latuan\Programming\dich-truyen-tien-hiep\README.md`
-- `D:\latuan\Programming\dich-truyen-tien-hiep\docs\ARCHITECTURE.md`
-- `D:\latuan\Programming\dich-truyen-tien-hiep\.agents\skills\translate-error-chapters\SKILL.md`
+- `../dich-truyen-tien-hiep/README.md`
+- `../dich-truyen-tien-hiep/docs/ARCHITECTURE.md`
+- `../dich-truyen-tien-hiep/.agents/skills/translate-error-chapters/SKILL.md`
 
 ---
 *Research completed: 2026-05-31*

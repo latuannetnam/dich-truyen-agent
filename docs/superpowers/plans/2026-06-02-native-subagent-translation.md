@@ -17,7 +17,7 @@
 
 - [ ] **Step 1: Rewrite `.agent/skills/translate-book/SKILL.md`**
 
-Replace the entire contents of [SKILL.md](file:///d:/latuan/Programming/dich-truyen-agent/.agent/skills/translate-book/SKILL.md) with the following complete, revised instruction set:
+Replace the entire contents of [SKILL.md](../../../.agent/skills/translate-book/SKILL.md) with the following complete, revised instruction set:
 
 ```markdown
 ---

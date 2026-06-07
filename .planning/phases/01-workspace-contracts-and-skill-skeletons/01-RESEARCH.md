@@ -13,7 +13,7 @@ style snapshots, and compact CLI-facing result models. Crawling, translation, gl
 QA analysis, and ebook export remain out of scope.
 
 The clean repository has no reusable package modules yet. The legacy
-`D:\latuan\Programming\dich-truyen-tien-hiep` application is useful as a behavioral reference,
+`../dich-truyen-tien-hiep` application is useful as a behavioral reference,
 especially its Pydantic `StyleTemplate` and `yaml.safe_load()` style loading, but its direct
 canonical YAML writes are not sufficient for the new interruption-safety requirement. Build
 fresh contracts rather than porting the old application's combined progress model.
@@ -222,9 +222,9 @@ models, and atomic storage helpers.
 - `.planning/REQUIREMENTS.md`
 - `.planning/PROJECT.md`
 - `.planning/research/STACK.md`
-- `D:\latuan\Programming\dich-truyen-tien-hiep\src\dich_truyen\translator\style.py`
-- `D:\latuan\Programming\dich-truyen-tien-hiep\styles\tien_hiep.yaml`
-- `D:\latuan\Programming\dich-truyen-tien-hiep\src\dich_truyen\utils\progress.py`
+- `../dich-truyen-tien-hiep/src/dich_truyen/translator/style.py`
+- `../dich-truyen-tien-hiep/styles/tien_hiep.yaml`
+- `../dich-truyen-tien-hiep/src/dich_truyen/utils/progress.py`
 
 ---
 

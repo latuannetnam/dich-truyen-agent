@@ -51,7 +51,7 @@ EPUBCheck is a Java application. We will invoke it through a Python subprocess r
 - **Detection Logic:**
   - Look for `ebook-convert` or `ebook-convert.exe` in system `PATH`.
   - Check typical installation fallback paths:
-    * Windows: `C:\Program Files\Calibre2\ebook-convert.exe` and `C:\Program Files (x86)\Calibre2\ebook-convert.exe`
+    * Windows: `Program Files/Calibre2/ebook-convert.exe` and `Program Files (x86)/Calibre2/ebook-convert.exe`
     * macOS / Linux: `/Applications/calibre.app/Contents/MacOS/ebook-convert` or `/usr/bin/ebook-convert`.
   - Fall back to `DICH_TRUYEN_CALIBRE_PATH` env var.
 - **Conversion Execution:**

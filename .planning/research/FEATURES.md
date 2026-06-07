@@ -126,9 +126,9 @@ behaviors while removing UI/API scope and direct LLM-client translation.
 
 ## Sources
 
-- `D:\latuan\Programming\dich-truyen-tien-hiep\README.md` - old application baseline
-- `D:\latuan\Programming\dich-truyen-tien-hiep\docs\ARCHITECTURE.md` - old pipeline patterns
-- `D:\latuan\Programming\dich-truyen-tien-hiep\.agents\skills\translate-error-chapters\SKILL.md` - prior orchestrator-worker experiment
+- `../dich-truyen-tien-hiep/README.md` - old application baseline
+- `../dich-truyen-tien-hiep/docs/ARCHITECTURE.md` - old pipeline patterns
+- `../dich-truyen-tien-hiep/.agents/skills/translate-error-chapters/SKILL.md` - prior orchestrator-worker experiment
 - `.planning/PROJECT.md` - user-approved v1 boundaries
 - https://www.w3.org/TR/epub-33/ - EPUB 3.3 navigation and packaging expectations
 

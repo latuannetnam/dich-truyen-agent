@@ -58,7 +58,7 @@ Export QA-approved Vietnamese translations into a fully conformant canonical EPU
 - If EPUBCheck fails with validation errors, print the errors and abort the export before saving the final ebook.
 
 ### D-06: Calibre `ebook-convert` Derivative Format Runner
-- Locate Calibre's `ebook-convert` utility in system `PATH`, Windows default installations (`C:\Program Files\Calibre2\ebook-convert.exe`), or macOS/Linux standard locations.
+- Locate Calibre's `ebook-convert` utility in system `PATH`, Windows default installations (`Program Files/Calibre2/ebook-convert.exe`), or macOS/Linux standard locations.
 - Support `DICH_TRUYEN_CALIBRE_PATH` env var override.
 - Derivative generation is optional: if Calibre is missing, log a clear warning, skip AZW3/MOBI/PDF conversion, and successfully complete canonical EPUB generation.
 
