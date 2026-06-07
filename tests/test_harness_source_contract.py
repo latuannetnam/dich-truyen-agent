@@ -49,6 +49,7 @@ def test_manifest_declares_all_harnesses_and_prefixes():
     }
     assert manifest["skills"] == EXPECTED_SKILLS
     assert manifest["agents"] == EXPECTED_AGENTS
+    assert manifest["opencode_extra_denied_skills"] == ["brainstorming", "writing-plans"]
     assert "GENERATED from .harness/source" in manifest["generated_header"]
 
 

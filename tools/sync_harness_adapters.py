@@ -256,7 +256,9 @@ def render_opencode_json(manifest: dict) -> RenderedFile:
         bash_rules[f"*{imp}*"] = "deny"
 
     skill_rules = {"*": "allow"}
-    for name in ["crawl-book", "translate-book", "check-translation", "export-book"]:
+    for name in manifest["skills"]:
+        skill_rules[name] = "deny"
+    for name in manifest.get("opencode_extra_denied_skills", []):
         skill_rules[name] = "deny"
     for prefix in ["ag", "cc", "codex"]:
         for name in manifest["skills"]:

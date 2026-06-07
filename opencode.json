@@ -28,6 +28,8 @@
       "translate-book": "deny",
       "check-translation": "deny",
       "export-book": "deny",
+      "brainstorming": "deny",
+      "writing-plans": "deny",
       "ag-crawl-book": "deny",
       "ag-translate-book": "deny",
       "ag-check-translation": "deny",

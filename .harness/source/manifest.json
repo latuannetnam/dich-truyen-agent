@@ -8,5 +8,6 @@
   },
   "skills": ["crawl-book", "translate-book", "check-translation", "export-book"],
   "agents": ["translator", "metadata-translator", "coordinator"],
+  "opencode_extra_denied_skills": ["brainstorming", "writing-plans"],
   "generated_header": "<!-- GENERATED from .harness/source by tools/sync_harness_adapters.py. Do not edit directly. -->"
 }
