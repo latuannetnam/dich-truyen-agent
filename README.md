@@ -53,7 +53,7 @@ uv sync --all-groups
 If running EPUB validations and Calibre derivative format conversions, configure your system environment paths:
 ```powershell
 # Path to your epubcheck.jar file or folder (Required for export)
-$env:DICH_TRUYEN_EPUBCHECK_PATH = "C:\Users\latuan\tools\epubcheck-5.3.0"
+$env:DICH_TRUYEN_EPUBCHECK_PATH = "$PWD\tools\epubcheck-5.3.0"
 
 # Path to Calibre's ebook-convert executable (Optional)
 $env:DICH_TRUYEN_CALIBRE_PATH = "C:\Program Files\Calibre2\ebook-convert.exe"
@@ -68,63 +68,158 @@ uv run pytest
 
 ---
 
-## v1 Usage Workflow (Skill-Based)
+## Harness-Based Usage Workflow
 
-The workspace is designed to be operated interactively through Antigravity project-local skills rather than raw console scripts. The workflow is a collaborative partnership between the user and the coding-agent, governed by explicit gate checkpoints.
+The workspace is operated through generated harness adapters rather than one
+runtime-specific skill set. The shared architecture keeps one canonical source
+of truth while still allowing each coding-agent runtime to use its native tools
+for commands, bounded file reads, and subagent delegation.
+
+### Harness Adapter Architecture
+
+- Canonical source lives in `.harness/source/`.
+- Generated runtime adapters are committed so every harness can discover them
+  without running setup first.
+- Adapter names are prefixed to avoid duplicate or ambiguous discovery:
+  `ag-*` for Antigravity, `cc-*` for Claude Code, `oc-*` for OpenCode, and
+  `codex-*` for Codex.
+- Root guide files are generated from shared main-agent logic:
+  `AGENTS.md` contains the cross-harness guide and `CLAUDE.md` contains the
+  Claude-specific panel.
+- OpenCode duplicate-discovery protection is declared in `opencode.json`; only
+  the `oc-*` pipeline skills remain active for OpenCode.
+
+Generated adapter locations:
+
+```text
+.agent/skills/ag-*          # Antigravity skills
+.agent/agents/ag_*          # Antigravity subagents
+.claude/skills/cc-*         # Claude Code skills
+.claude/agents/cc_*         # Claude Code subagents
+.opencode/skill/oc-*        # OpenCode skills
+.opencode/agent/oc-*        # OpenCode subagents
+.codex/skills/codex-*       # Codex skills
+.codex/agents/codex_*       # Codex subagents
+```
+
+### Skill Name Matrix
+
+| Phase | Antigravity | Claude Code | OpenCode | Codex |
+|---|---|---|---|---|
+| Crawl | `ag-crawl-book` | `cc-crawl-book` | `oc-crawl-book` | `codex-crawl-book` |
+| Translate | `ag-translate-book` | `cc-translate-book` | `oc-translate-book` | `codex-translate-book` |
+| QA | `ag-check-translation` | `cc-check-translation` | `oc-check-translation` | `codex-check-translation` |
+| Export | `ag-export-book` | `cc-export-book` | `oc-export-book` | `codex-export-book` |
 
 ### Step 1: Initialize the Workspace
+
 The user instructs the agent to initialize a clean workspace:
-> **User:** Please initialize a workspace for the book "Kiếm Lai" with slug `jian-lai` and source URL `https://example.com/jian-lai`.
-> **Agent:** *(Initializes the directory structure, loads default style configs, and sets up chapter state manifests).*
 
----
+> **User:** Please initialize a workspace for the book "Kiem Lai" with slug
+> `jian-lai` and source URL `https://example.com/jian-lai`.
 
-### Step 2: Crawl and Review Gate (`crawl-book` Skill)
-The user triggers the crawl skill to autonomously download raw novel content:
-1. **Trigger Skill:** The user runs `$crawl-book books/jian-lai/`.
-2. **Execution:** The agent executes the batch crawler (handling retries, backoffs, and Playwright rendering fallback if static parse fails) and creates `reports/crawl.yaml`.
-3. **Approval:** The user reviews the crawl report and instructs the agent to approve the raw content:
-   > **User:** The crawl report looks great, please approve the crawl for `books/jian-lai/`.
-   > **Agent:** *(Approves checkpoints, creating the cryptographically secure `checkpoints/crawl-approved.yaml` with evidence hashes).*
+The agent uses the CLI helper:
 
----
+```powershell
+$env:PYTHONUTF8=1
+uv run python main.py init-book --slug jian-lai --title "Kiem Lai" --source-url "https://example.com/jian-lai"
+```
 
-### Step 3: Glossary Generation & Life Cycle
-The glossary dictionary is initialized and evolved safely as translation proceeds:
-- After crawl approval, the agent automatically initializes `glossary.yaml` and extracts initial vocabulary.
-- The user can edit names or terms directly in `glossary.yaml` or lock crucial translations:
-  > **User:** Please lock the canonical translation for "修炼" in `books/jian-lai/`.
-  > **Agent:** *(Locks term as canonical to protect it from progressive merging).*
+### Step 2: Crawl and Review Gate
 
----
+Trigger the crawl skill for the active harness:
 
-### Step 4: Sequential Agent Translation (`translate-book` Skill)
-The user triggers sequential translation:
-1. **Trigger Skill:** The user runs `$translate-book books/jian-lai/`.
-2. **Execution:** The agent orchestrator runs sequentially:
-   - Fetches isolated chapter context (vocabulary, style rules, and Chapter $N-1$ text).
-   - Spawns specialized translator subagents to translate Chapter $N$ without bloating the main chat session context window.
-   - Merges chapter-level progressive glossary proposals and atomically promotes translated Vietnamese chapters.
-3. **Resumption:** If transient LLM failures exhaust the 3 retries, translation pauses safely. The user can manually inspect the staged draft or glossary mapping and run `$translate-book books/jian-lai/` to resume exactly from the failed chapter.
+```text
+$ag-crawl-book books/jian-lai/
+$cc-crawl-book books/jian-lai/
+$oc-crawl-book books/jian-lai/
+$codex-crawl-book books/jian-lai/
+```
 
----
+The agent executes the crawler, creates `reports/crawl.yaml`, and waits for the
+user to approve the raw crawl evidence:
 
-### Step 5: Quality Assurance Auditing (`check-translation` Skill)
-The user triggers a read-only quality scan once translation is complete:
-1. **Trigger Skill:** The user runs `$check-translation books/jian-lai/`.
-2. **Execution:** The agent scans all files for structural gaps (missing/empty chapters), incompleteness (unbalanced quotes, missing ending punctuation), Chinese residue characters/symbols, abnormal Vietnamese-to-Chinese character length ratios, and glossary conflicts.
-3. **Approval:** If findings are clean or warnings are accepted, the user directs the agent to approve the QA:
-   > **User:** The QA report is acceptable, please approve the QA checkpoint.
-   > **Agent:** *(Saves evidence hashes of all translations to `checkpoints/qa-approved.yaml`).*
+```powershell
+$env:PYTHONUTF8=1
+uv run python main.py approve-crawl --workspace books/jian-lai
+```
 
----
+### Step 3: Glossary Generation and Lifecycle
 
-### Step 6: EPUB 3.3 Ebook Export (`export-book` Skill)
-The user compiles digital books once the QA gate is approved:
-1. **Trigger Skill:** The user runs `$export-book books/jian-lai/ epub,azw3,mobi,pdf`.
-2. **Execution:** The agent validates the QA checkpoint, compiles the canonical EPUB 3.3 ebook in-memory, performs mandatory validation checks via EPUBCheck subprocesses, and derives optional Calibre formats (AZW3, MOBI, PDF).
-3. **Outputs:** The validated canonical EPUB and Calibre derivatives are saved to `books/jian-lai/exports/`.
+After crawl approval, the agent initializes and evolves `glossary.yaml` as
+translation proceeds. Users can edit names or terms directly in the glossary or
+ask the agent to lock canonical translations for important terms.
 
+### Step 4: Sequential Agent Translation
+
+Trigger the translate skill for the active harness:
+
+```text
+$ag-translate-book books/jian-lai/
+$cc-translate-book books/jian-lai/
+$oc-translate-book books/jian-lai/
+$codex-translate-book books/jian-lai/
+```
+
+Translation is always sequential. The main agent checks progress, delegates
+bounded batches to coordinator subagents where supported, and isolates chapter
+file reading inside translator subagents. Chapter `N` receives the completed
+Vietnamese output of Chapter `N-1` as continuity context.
+
+If transient failures exhaust retries, translation pauses safely at the last
+promoted chapter. Running the same harness-prefixed translate skill resumes from
+the next pending chapter.
+
+### Step 5: Quality Assurance Auditing
+
+Trigger the QA skill for the active harness:
+
+```text
+$ag-check-translation books/jian-lai/
+$cc-check-translation books/jian-lai/
+$oc-check-translation books/jian-lai/
+$codex-check-translation books/jian-lai/
+```
+
+The agent scans for structural gaps, missing or empty chapters, Chinese residue,
+formatting anomalies, abnormal length ratios, and glossary conflicts. If the QA
+report is accepted, approve the QA checkpoint:
+
+```powershell
+$env:PYTHONUTF8=1
+uv run python main.py approve-qa --workspace books/jian-lai
+```
+
+### Step 6: EPUB 3.3 Ebook Export
+
+Trigger the export skill for the active harness:
+
+```text
+$ag-export-book books/jian-lai/ epub,azw3,mobi,pdf
+$cc-export-book books/jian-lai/ epub,azw3,mobi,pdf
+$oc-export-book books/jian-lai/ epub,azw3,mobi,pdf
+$codex-export-book books/jian-lai/ epub,azw3,mobi,pdf
+```
+
+The agent validates the QA checkpoint, compiles the canonical EPUB 3.3 ebook,
+runs EPUBCheck, and derives optional Calibre formats. Outputs are saved under
+`books/jian-lai/exports/`.
+
+### Updating Harness Adapters
+
+Do not edit generated adapter files directly. Update `.harness/source/**`, then
+regenerate and verify:
+
+```powershell
+$env:PYTHONUTF8=1
+uv run python tools/sync_harness_adapters.py
+uv run python tools/sync_harness_adapters.py --check
+uv run pytest -q
+uv run ruff check tools tests src main.py
+```
+
+Generated files include a `GENERATED from .harness/source` header. If a generated
+file is stale, `tools/sync_harness_adapters.py --check` reports it.
 
 ---
 
