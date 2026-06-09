@@ -33,7 +33,7 @@ Run:
 $env:PYTHONUTF8=1
 uv run python main.py prepare-translation-context --workspace books/<book-slug> --chapter-id <chapter_id>
 ```
-Extract `raw_path`, `style_path`, `glossary_path`, `prev_translation_path`, and paths to output files.
+Extract `raw_path`, `style_path`, `glossary_path`, `glossary_context_path`, `prev_translation_path`, and paths to output files.
 Resolve all file paths to **absolute paths** before passing them to the subagent.
 
 ### Step 3: Spawn Translator Subagent
@@ -45,6 +45,7 @@ Please translate the assigned chapter.
 - raw_path: [Absolute Path to raw_path]
 - style_path: [Absolute Path to style_path]
 - glossary_path: [Absolute Path to glossary_path]
+- glossary_context_path: [Absolute Path to glossary_context_path]
 - prev_translation_path: [Absolute Path to prev_translation_path]
 - staged_txt: [Absolute Path to staging/chuong-{chapter_id:04d}-staged.txt]
 - staged_yaml: [Absolute Path to staging/chuong-{chapter_id:04d}-proposals.yaml]
@@ -61,6 +62,7 @@ $env:PYTHONUTF8=1
 uv run python main.py promote-chapter --workspace books/<book-slug> --chapter-id <chapter_id>
 ```
 If successful, loop back to Step 1.
+If promotion is blocked by glossary consistency, retry the same chapter and include the `promote-chapter` reason in the translator prompt so the next attempt uses the existing glossary mapping and avoids rejected aliases.
 If the subagent fails or promotion fails, retry the chapter up to 3 times with polite backoffs before halting completely.
 
 ## Final Output

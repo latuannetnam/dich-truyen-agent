@@ -238,6 +238,21 @@ class BookGlossary(PersistedModel):
     terms: dict[str, GlossaryTerm] = Field(default_factory=dict)  # Chinese term -> GlossaryTerm
 
 
+class GlossaryContextTerm(PersistedModel):
+    translation: str = Field(min_length=1)
+    category: str = Field(default="other")
+    source: str = Field(min_length=1)
+    is_canonical: bool = Field(default=False)
+    note: str | None = None
+    rejected_aliases: list[str] = Field(default_factory=list)
+
+
+class GlossaryContext(PersistedModel):
+    schema_version: int = 1
+    chapter_id: int = Field(gt=0)
+    terms: dict[str, GlossaryContextTerm] = Field(default_factory=dict)
+
+
 class GlossaryConflict(PersistedModel):
     term: str = Field(min_length=1)
     existing_translation: str = Field(min_length=1)
@@ -272,5 +287,4 @@ class QAReport(PersistedModel):
     generated_at: datetime = Field(default_factory=datetime.now)
     summary: dict = Field(default_factory=dict)
     findings: list[QAFinding] = Field(default_factory=list)
-
 

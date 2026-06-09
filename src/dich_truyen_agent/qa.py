@@ -5,6 +5,10 @@ import logging
 from pathlib import Path
 import re
 
+from dich_truyen_agent.glossary import (
+    build_chapter_glossary_context,
+    find_rejected_alias_usages,
+)
 from dich_truyen_agent.models import (
     BookState,
     ChapterCatalog,
@@ -124,6 +128,14 @@ def run_qa_check(workspace_root: Path) -> QAReport:
             )
             continue
 
+        raw_text = None
+        raw_read_error = None
+        if raw_path.is_file():
+            try:
+                raw_text = raw_path.read_text(encoding="utf-8")
+            except OSError as e:
+                raw_read_error = e
+
         # D. Completeness: unbalanced quotes and brackets
         double_quotes = vi_text.count('"')
         if double_quotes % 2 != 0:
@@ -234,10 +246,37 @@ def run_qa_check(workspace_root: Path) -> QAReport:
                     )
                 )
 
-        # G. Abnormal character length checks
-        if raw_path.is_file():
+        # G. Rejected glossary alias checks
+        if raw_text is not None:
             try:
-                raw_text = raw_path.read_text(encoding="utf-8")
+                context = build_chapter_glossary_context(workspace_root, cid, raw_text)
+                for usage in find_rejected_alias_usages(context, vi_text):
+                    findings.append(
+                        QAFinding(
+                            chapter_id=cid,
+                            finding_type=QAFindingType.GLOSSARY,
+                            severity="error",
+                            message=(
+                                f"Rejected glossary alias '{usage['rejected_alias']}' "
+                                f"used for '{usage['term']}'. Expected "
+                                f"'{usage['expected_translation']}'."
+                            ),
+                            details=usage,
+                        )
+                    )
+            except Exception as e:
+                findings.append(
+                    QAFinding(
+                        chapter_id=cid,
+                        finding_type=QAFindingType.GLOSSARY,
+                        severity="warning",
+                        message=f"Failed to build glossary context for alias check: {e}",
+                    )
+                )
+
+        # H. Abnormal character length checks
+        if raw_text is not None:
+            try:
                 raw_chars = len(raw_text.strip())
                 vi_chars = len(vi_text.strip())
 
@@ -258,14 +297,19 @@ def run_qa_check(workspace_root: Path) -> QAReport:
                             )
                         )
             except OSError as e:
-                findings.append(
-                    QAFinding(
-                        chapter_id=cid,
-                        finding_type=QAFindingType.LENGTH,
-                        severity="warning",
-                        message=f"Failed to read raw Chinese chapter file to perform length check: {e}",
-                    )
+                raw_read_error = e
+        if raw_read_error is not None:
+            findings.append(
+                QAFinding(
+                    chapter_id=cid,
+                    finding_type=QAFindingType.LENGTH,
+                    severity="warning",
+                    message=(
+                        "Failed to read raw Chinese chapter file to perform "
+                        f"length check: {raw_read_error}"
+                    ),
                 )
+            )
 
     # 4. Unresolved Glossary Conflicts
     if paths.glossary_conflicts.is_file():
@@ -278,7 +322,7 @@ def run_qa_check(workspace_root: Path) -> QAReport:
                     QAFinding(
                         chapter_id=conflict.chapter_id,
                         finding_type=QAFindingType.GLOSSARY,
-                        severity="warning",
+                        severity="error",
                         message=f"Unresolved glossary conflict for '{conflict.term}': existing '{conflict.existing_translation}' vs proposed '{conflict.proposed_translation}'.",
                         details={
                             "term": conflict.term,

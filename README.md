@@ -150,6 +150,13 @@ After crawl approval, the agent initializes and evolves `glossary.yaml` as
 translation proceeds. Users can edit names or terms directly in the glossary or
 ask the agent to lock canonical translations for important terms.
 
+During translation, `prepare-translation-context` writes a bounded
+`staging/chuong-NNNN-glossary-context.yaml` file for the next chapter. It lists
+glossary terms found in that raw chapter and any rejected aliases from unresolved
+conflict records. `promote-chapter` blocks before writing to `translations/` if
+the staged draft proposes a conflicting mapping or uses a rejected alias. QA also
+treats unresolved glossary conflicts as blocking findings.
+
 ### Step 4: Sequential Agent Translation
 
 Trigger the translate skill for the active harness:

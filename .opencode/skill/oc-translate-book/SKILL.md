@@ -80,7 +80,7 @@ uv run python main.py prepare-translation-context --workspace books/<book-slug> 
 Construct the absolute file paths for all input and output files by resolving their paths relative to the project root.
 
 ### Step 5: Dispatch the Isolated OpenCode Worker
-Use the OpenCode `task(` dispatch shown above with `subagent_type="general"` and `oc-translator` instructions, passing the absolute paths reported by `prepare-translation-context`.
+Use the OpenCode `task(` dispatch shown above with `subagent_type="general"` and `oc-translator` instructions, passing the absolute paths reported by `prepare-translation-context`, including `glossary_context_path`.
 
 ### Step 6: Lightweight Staging Verification
 Read only the first 3 lines of `books/<book-slug>/staging/chuong-{chapter_id:04d}-staged.txt` to confirm the `# [title_vi]` format.
@@ -92,6 +92,7 @@ $env:PYTHONUTF8=1
 uv run python main.py promote-chapter --workspace books/<book-slug> --chapter-id <chapter_id>
 ```
 If successful, loop back to Step 2 for the next pending chapter.
+If promotion is blocked by glossary consistency, retry the same chapter and include the `promote-chapter` reason in the translator prompt so the next attempt uses the existing glossary mapping and avoids rejected aliases.
 * **Retries:** Retry failures up to 3 times with polite backoffs before halting.
 
 ---

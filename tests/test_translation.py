@@ -8,15 +8,19 @@ import yaml
 from dich_truyen_agent.checkpoints import approve_checkpoint
 from dich_truyen_agent.models import (
     BookMetadata,
+    BookGlossary,
     BookState,
     ChapterCatalog,
     ChapterCatalogEntry,
     CheckpointType,
+    GlossaryConflict,
+    GlossaryConflictReport,
+    GlossaryContext,
+    GlossaryTerm,
     OperationStatus,
     StageRecord,
     StageStatus,
     TranslationStyle,
-    BookGlossary,
 )
 from dich_truyen_agent.paths import workspace_paths
 from dich_truyen_agent.storage import atomic_write_yaml, load_yaml_model, sha256_file
@@ -133,6 +137,65 @@ def test_prepare_context_resolves_fallback_on_first_chapter(test_workspace: Path
     assert "no predecessor" in payload["fallback_reason"]
 
 
+def test_prepare_context_writes_relevant_glossary_context(test_workspace: Path) -> None:
+    paths = workspace_paths(test_workspace.parent, test_workspace.name)
+    report = paths.reports / "crawl.yaml"
+    report.write_text("review", encoding="utf-8")
+    approve_checkpoint(
+        test_workspace,
+        CheckpointType.CRAWL_APPROVED,
+        "reports/crawl.yaml",
+        ["raw/0001-chuong-0001.txt"],
+    )
+
+    atomic_write_yaml(
+        paths.glossary,
+        BookGlossary(
+            terms={
+                "仙人": GlossaryTerm(
+                    translation="Tiên Nhân",
+                    category="character",
+                    source="manual",
+                    is_canonical=True,
+                ),
+                "炼气": GlossaryTerm(
+                    translation="Luyện Khí",
+                    category="cultivation",
+                    source="manual",
+                    is_canonical=True,
+                ),
+            }
+        ),
+    )
+    atomic_write_yaml(
+        paths.glossary_conflicts,
+        GlossaryConflictReport(
+            conflicts=[
+                GlossaryConflict(
+                    term="仙人",
+                    existing_translation="Tiên Nhân",
+                    existing_source="manual",
+                    proposed_translation="Tiên Ông",
+                    proposed_source="chapter_2_proposal",
+                    chapter_id=2,
+                )
+            ]
+        ),
+    )
+
+    result = prepare_translation_context(test_workspace, 1)
+
+    assert result.status is OperationStatus.OK
+    payload = json.loads(result.reason)
+    context_path = Path(payload["glossary_context_path"])
+    assert context_path == paths.staging / "chuong-0001-glossary-context.yaml"
+    context = load_yaml_model(context_path, GlossaryContext)
+    assert context.chapter_id == 1
+    assert set(context.terms) == {"仙人"}
+    assert context.terms["仙人"].translation == "Tiên Nhân"
+    assert context.terms["仙人"].rejected_aliases == ["Tiên Ông"]
+
+
 def test_prepare_context_out_of_order_blocks(test_workspace: Path) -> None:
     paths = workspace_paths(test_workspace.parent, test_workspace.name)
     report = paths.reports / "crawl.yaml"
@@ -201,6 +264,94 @@ def test_promote_chapter_validation_and_success(test_workspace: Path) -> None:
     # Staging cleaned
     assert not staged_txt.exists()
     assert not staged_yaml.exists()
+
+
+def test_promote_chapter_blocks_conflicting_glossary_proposal(test_workspace: Path) -> None:
+    paths = workspace_paths(test_workspace.parent, test_workspace.name)
+    staged_txt = paths.staging / "chuong-0001-staged.txt"
+    staged_yaml = paths.staging / "chuong-0001-proposals.yaml"
+
+    atomic_write_yaml(
+        paths.glossary,
+        BookGlossary(
+            terms={
+                "修炼": GlossaryTerm(
+                    translation="tu luyện",
+                    category="cultivation",
+                    source="manual",
+                    is_canonical=True,
+                )
+            }
+        ),
+    )
+    staged_txt.write_text("# Chương 1\n\nHắn bắt đầu tu hành.", encoding="utf-8")
+    staged_yaml.write_text(
+        yaml.safe_dump(
+            {"修炼": {"translation": "tu hành", "category": "cultivation"}},
+            allow_unicode=True,
+        ),
+        encoding="utf-8",
+    )
+
+    result = promote_chapter_translation(test_workspace, 1)
+
+    assert result.status is OperationStatus.BLOCKED
+    assert "glossary consistency blocked" in result.reason
+    assert not (paths.translations / "0001-chuong-0001.txt").exists()
+    assert staged_txt.exists()
+    assert staged_yaml.exists()
+    state = load_yaml_model(paths.state, BookState)
+    ch1_state = next(c for c in state.chapters if c.chapter_id == 1)
+    assert ch1_state.translation.status is StageStatus.PENDING
+    conflict_report = load_yaml_model(paths.glossary_conflicts, GlossaryConflictReport)
+    assert len(conflict_report.conflicts) == 1
+    assert conflict_report.conflicts[0].term == "修炼"
+    assert conflict_report.conflicts[0].proposed_translation == "tu hành"
+
+
+def test_promote_chapter_blocks_rejected_alias_in_staged_text(test_workspace: Path) -> None:
+    paths = workspace_paths(test_workspace.parent, test_workspace.name)
+    staged_txt = paths.staging / "chuong-0001-staged.txt"
+
+    atomic_write_yaml(
+        paths.glossary,
+        BookGlossary(
+            terms={
+                "仙人": GlossaryTerm(
+                    translation="Tiên Nhân",
+                    category="character",
+                    source="manual",
+                    is_canonical=True,
+                )
+            }
+        ),
+    )
+    atomic_write_yaml(
+        paths.glossary_conflicts,
+        GlossaryConflictReport(
+            conflicts=[
+                GlossaryConflict(
+                    term="仙人",
+                    existing_translation="Tiên Nhân",
+                    existing_source="manual",
+                    proposed_translation="Tiên Ông",
+                    proposed_source="chapter_2_proposal",
+                    chapter_id=2,
+                )
+            ]
+        ),
+    )
+    staged_txt.write_text("# Chương 1\n\nTiên Ông chỉ đường cho hắn.", encoding="utf-8")
+
+    result = promote_chapter_translation(test_workspace, 1)
+
+    assert result.status is OperationStatus.BLOCKED
+    assert "rejected glossary alias" in result.reason
+    assert not (paths.translations / "0001-chuong-0001.txt").exists()
+    assert staged_txt.exists()
+    state = load_yaml_model(paths.state, BookState)
+    ch1_state = next(c for c in state.chapters if c.chapter_id == 1)
+    assert ch1_state.translation.status is StageStatus.PENDING
 
 
 def test_get_next_pending_translation(test_workspace: Path) -> None:

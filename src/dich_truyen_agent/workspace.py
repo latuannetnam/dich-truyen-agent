@@ -6,7 +6,11 @@ from pathlib import Path
 import yaml
 
 from dich_truyen_agent.checkpoints import check_gate
-from dich_truyen_agent.glossary import merge_glossary_proposals
+from dich_truyen_agent.glossary import (
+    merge_glossary_proposals,
+    validate_staged_glossary_consistency,
+    write_chapter_glossary_context,
+)
 from dich_truyen_agent.models import (
     BookMetadata,
     BookState,
@@ -249,6 +253,12 @@ def prepare_translation_context(workspace_root: Path, chapter_id: int) -> Operat
                 status=OperationStatus.ERROR,
                 reason=f"raw chapter file not found: {raw_path}",
             )
+
+        glossary_context_path = write_chapter_glossary_context(
+            workspace_root,
+            chapter_id,
+            raw_path,
+        )
             
         # 5. Resolve predecessor translation context with fallback
         prev_translation_path = None
@@ -271,6 +281,7 @@ def prepare_translation_context(workspace_root: Path, chapter_id: int) -> Operat
             "raw_path": str(raw_path.resolve()),
             "style_path": str(paths.style.resolve()),
             "glossary_path": str(paths.glossary.resolve()),
+            "glossary_context_path": str(glossary_context_path.resolve()),
             "prev_translation_path": prev_translation_path,
             "is_fallback": is_fallback,
             "fallback_reason": fallback_reason if is_fallback else None,
@@ -348,6 +359,17 @@ def promote_chapter_translation(workspace_root: Path, chapter_id: int) -> Operat
                     status=OperationStatus.ERROR,
                     reason=f"invalid staged proposals YAML syntax: {e}",
                 )
+
+        raw_path = paths.raw / entry.raw_filename
+        glossary_validation = validate_staged_glossary_consistency(
+            workspace_root,
+            chapter_id,
+            proposals,
+            text,
+            raw_path,
+        )
+        if glossary_validation.status is not OperationStatus.OK:
+            return glossary_validation
                 
         # 3. Atomic Promotion of translation text
         rel_dest_path = f"translations/{entry.translation_filename}"

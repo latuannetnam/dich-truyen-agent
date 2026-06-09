@@ -3,6 +3,7 @@ import pytest
 
 from dich_truyen_agent.models import (
     BookMetadata,
+    BookGlossary,
     BookState,
     ChapterCatalog,
     ChapterCatalogEntry,
@@ -10,6 +11,7 @@ from dich_truyen_agent.models import (
     CheckpointType,
     GlossaryConflict,
     GlossaryConflictReport,
+    GlossaryTerm,
     OperationStatus,
     QAFindingType,
     StageStatus,
@@ -323,8 +325,78 @@ def test_qa_detects_glossary_conflicts(qa_workspace: Path) -> None:
     report = run_qa_check(qa_workspace)
     glossary_findings = [f for f in report.findings if f.finding_type == QAFindingType.GLOSSARY]
     assert len(glossary_findings) == 1
+    assert glossary_findings[0].severity == "error"
     assert "Unresolved glossary conflict" in glossary_findings[0].message
     assert glossary_findings[0].details["term"] == "剑来"
+    assert report.summary["passed"] is False
+
+
+def test_qa_detects_rejected_glossary_alias_usage(qa_workspace: Path) -> None:
+    paths = workspace_paths(qa_workspace.parent, qa_workspace.name)
+
+    (paths.raw / "0001-c1.txt").write_text("剑来", encoding="utf-8")
+    (paths.translations / "0001-c1.txt").write_text("Kiếm Đến xuất hiện.", encoding="utf-8")
+
+    book_state = BookState(
+        chapters=[
+            ChapterState(
+                chapter_id=1,
+                translation={"status": StageStatus.COMPLETED, "canonical_path": "translations/0001-c1.txt", "sha256": "dummy1"}
+            )
+        ]
+    )
+    atomic_write_yaml(paths.state, book_state)
+    catalog = ChapterCatalog(
+        chapters=[
+            ChapterCatalogEntry(
+                chapter_id=1,
+                slug="chuong-1",
+                source_url="https://example.com/c1",
+                original_title="Chuong 1",
+                raw_filename="0001-c1.txt",
+                translation_filename="0001-c1.txt",
+            )
+        ]
+    )
+    atomic_write_yaml(paths.chapters, catalog)
+    atomic_write_yaml(
+        paths.glossary,
+        BookGlossary(
+            terms={
+                "剑来": GlossaryTerm(
+                    translation="Kiếm Lai",
+                    category="item",
+                    source="manual",
+                    is_canonical=True,
+                )
+            }
+        ),
+    )
+    atomic_write_yaml(
+        paths.glossary_conflicts,
+        GlossaryConflictReport(
+            conflicts=[
+                GlossaryConflict(
+                    term="剑来",
+                    existing_translation="Kiếm Lai",
+                    existing_source="manual",
+                    proposed_translation="Kiếm Đến",
+                    proposed_source="chapter_1_proposal",
+                    chapter_id=1,
+                )
+            ]
+        ),
+    )
+
+    report = run_qa_check(qa_workspace)
+
+    glossary_findings = [f for f in report.findings if f.finding_type == QAFindingType.GLOSSARY]
+    assert any("Rejected glossary alias" in f.message for f in glossary_findings)
+    alias_finding = next(f for f in glossary_findings if "Rejected glossary alias" in f.message)
+    assert alias_finding.severity == "error"
+    assert alias_finding.details["term"] == "剑来"
+    assert alias_finding.details["expected_translation"] == "Kiếm Lai"
+    assert alias_finding.details["rejected_alias"] == "Kiếm Đến"
 
 
 def test_cli_check_and_approve_qa(qa_workspace: Path, capsys) -> None:
