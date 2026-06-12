@@ -66,7 +66,9 @@ def test_operation_result_is_compact() -> None:
         "report_paths",
         "approval_path",
         "orphan_temp_paths",
+        "data",
     }
+    assert result.data == {}
 
 
 def test_completed_stage_record_requires_hash_and_path() -> None:

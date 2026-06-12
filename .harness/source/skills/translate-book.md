@@ -13,6 +13,10 @@ Translate crawled and approved Chinese chapters sequentially with harness-native
 > **Strict External API Prohibition:**
 > You are strictly forbidden from using external LLM APIs (e.g., OpenRouter, OpenAI, Gemini) via Python scripts, curl, or any other external tool to perform the translation. You MUST only use the native harness subagent capability as specified in the dispatch block for this adapter.
 
+> [!IMPORTANT]
+> **Compact Long-Book Automation:**
+> Use the shared 5-chapter batch size for every harness. For 1000+ chapter books, repeat fresh compact batches until completion. Do not accumulate promoted chapter arrays, raw text, completed translation text, or verbose per-chapter logs in the Main Agent context.
+
 ---
 
 ## Core Workflow
@@ -48,6 +52,7 @@ The Main Agent checks if the book's metadata (`book.yaml`) has been translated.
 ## Common Pitfalls
 
 * **Main Agent Context Overload:** Reading raw or complete translations in your main session immediately floods your token window. Keep all file-level reads locked inside the isolation subagent.
+* **Verbose Long-Book Summaries:** Returning cumulative chapter lists across hundreds of batches will exhaust the Main Agent context. Use compact batch counters and re-query CLI state.
 * **Bypassing Lexical Sandbox:** Leaving modern English conjunctions ("but", "while") or articles ("the") in classical Xianxia/Tu Chan Vietnamese prose. Always enforce the Lexical Sandbox mapping table check.
 * **Incorrect Metadata Updates:** Trying to manually search/replace inside `book.json` or `state.yaml`. Always use the CLI commands (`promote-chapter`, etc.) to update metadata.
 * **Using External LLM APIs:** Attempting to use Python or shell scripts to send raw text to external APIs (OpenAI, OpenRouter, etc.) instead of spawning a subagent. This is strictly prohibited and bypasses the native orchestration framework.

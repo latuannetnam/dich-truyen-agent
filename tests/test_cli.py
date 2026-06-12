@@ -116,6 +116,46 @@ def test_cli_help_lists_phase_two_commands(capsys) -> None:
         assert command in output
 
 
+def test_cli_help_lists_compact_translation_orchestration_commands(capsys) -> None:
+    parser = build_parser()
+    parser.print_help()
+    output = capsys.readouterr().out
+    assert "next-translation-work-item" in output
+    assert "verify-staged-chapter" in output
+
+
+def test_compact_translation_commands_accept_json_flag(tmp_path: Path) -> None:
+    parser = build_parser()
+
+    next_args = parser.parse_args(
+        ["next-translation-work-item", "--workspace", str(tmp_path / "books" / "demo"), "--json"]
+    )
+    verify_args = parser.parse_args(
+        [
+            "verify-staged-chapter",
+            "--workspace",
+            str(tmp_path / "books" / "demo"),
+            "--chapter-id",
+            "1",
+            "--json",
+        ]
+    )
+    promote_args = parser.parse_args(
+        [
+            "promote-chapter",
+            "--workspace",
+            str(tmp_path / "books" / "demo"),
+            "--chapter-id",
+            "1",
+            "--json",
+        ]
+    )
+
+    assert next_args.json is True
+    assert verify_args.json is True
+    assert promote_args.json is True
+
+
 def test_cli_validate_crawl_profile(tmp_path: Path) -> None:
     # Setup dummy workspace
     workspace = tmp_path / "books" / "demo-book"

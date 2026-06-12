@@ -4,7 +4,7 @@ Metadata translation uses `codex_metadata_translator`, and chapter translation u
 ```text
 spawn_agent(
   type="codex_coordinator",
-  prompt="Execute the translation loop for the next 20 pending chapters sequentially. For each chapter, query progress, prepare context, spawn codex_translator, verify staging, and promote."
+  prompt="Execute the compact translation loop for the next 5 pending chapters sequentially. For each chapter, fetch next-translation-work-item, spawn codex_translator, verify staging through verify-staged-chapter, and promote. Return only {status, processed_count, chapter_start, chapter_end, next_chapter_id, failure_reason}."
 )
 ```
 

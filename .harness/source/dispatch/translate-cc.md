@@ -12,6 +12,6 @@ Coordinator dispatch uses `cc_coordinator`, and the coordinator dispatches each 
 ```text
 Agent({
   subagent_type: "cc_coordinator",
-  prompt: "Execute the translation loop for the next 20 pending chapters sequentially. For each chapter, query progress, prepare context, spawn cc_translator, verify staging, and promote."
+  prompt: "Execute the compact translation loop for the next 5 pending chapters sequentially. For each chapter, fetch next-translation-work-item, spawn cc_translator, verify staging through verify-staged-chapter, and promote. Return only {status, processed_count, chapter_start, chapter_end, next_chapter_id, failure_reason}."
 })
 ```

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -475,4 +476,233 @@ def get_next_pending_translation(workspace_root: Path) -> OperationResult:
         return OperationResult(
             status=OperationStatus.ERROR,
             reason=f"Failed to identify next pending translation: {error}",
+        )
+
+
+def next_translation_work_item(workspace_root: Path) -> OperationResult:
+    """Return a compact, deterministic payload for the next translation task."""
+    try:
+        workspace_root = workspace_root.resolve()
+        paths = workspace_paths(workspace_root.parent, workspace_root.name)
+
+        catalog = load_yaml_model(paths.chapters, ChapterCatalog)
+        state = load_yaml_model(paths.state, BookState)
+        state_by_id = {chapter.chapter_id: chapter for chapter in state.chapters}
+        completed = sum(
+            1
+            for chapter in state.chapters
+            if chapter.translation.status is StageStatus.COMPLETED
+        )
+        total = len(catalog.chapters)
+
+        gate_res = check_gate(workspace_root, CheckpointType.CRAWL_APPROVED)
+        if gate_res.status is not OperationStatus.OK:
+            return OperationResult(
+                status=gate_res.status,
+                reason=gate_res.reason,
+                progress=ProgressSummary(completed=completed, total=total),
+                approval_path=gate_res.approval_path,
+                report_paths=gate_res.report_paths,
+                data={
+                    "state": "blocked",
+                    "progress_completed": completed,
+                    "progress_total": total,
+                    "next_chapter_id": None,
+                    "failure_reason": gate_res.reason,
+                },
+            )
+
+        target = None
+        for chapter in catalog.chapters:
+            ch_state = state_by_id.get(chapter.chapter_id)
+            if not ch_state or ch_state.translation.status is not StageStatus.COMPLETED:
+                target = chapter
+                break
+
+        if target is None:
+            return OperationResult(
+                status=OperationStatus.OK,
+                reason="all chapter translations completed",
+                progress=ProgressSummary(completed=completed, total=total),
+                data={
+                    "state": "completed",
+                    "progress_completed": completed,
+                    "progress_total": total,
+                    "next_chapter_id": None,
+                    "message": "all chapter translations completed",
+                },
+            )
+
+        completed_after_pending = [
+            chapter.chapter_id
+            for chapter in catalog.chapters
+            if chapter.chapter_id > target.chapter_id
+            and (
+                state_by_id.get(chapter.chapter_id)
+                and state_by_id[chapter.chapter_id].translation.status
+                is StageStatus.COMPLETED
+            )
+        ]
+        if completed_after_pending:
+            reason = (
+                "translation state gap: completed chapter(s) "
+                f"{completed_after_pending} appear after pending chapter {target.chapter_id}"
+            )
+            return OperationResult(
+                status=OperationStatus.BLOCKED,
+                reason=reason,
+                progress=ProgressSummary(
+                    completed=completed,
+                    total=total,
+                    current_chapter_id=target.chapter_id,
+                ),
+                data={
+                    "state": "blocked",
+                    "chapter_id": target.chapter_id,
+                    "progress_completed": completed,
+                    "progress_total": total,
+                    "completed_after_pending": completed_after_pending,
+                    "failure_reason": reason,
+                },
+            )
+
+        context = prepare_translation_context(workspace_root, target.chapter_id)
+        if context.status is not OperationStatus.OK:
+            state_name = (
+                "blocked"
+                if context.status is OperationStatus.BLOCKED
+                else "error"
+            )
+            return OperationResult(
+                status=context.status,
+                reason=context.reason,
+                progress=ProgressSummary(
+                    completed=completed,
+                    total=total,
+                    current_chapter_id=target.chapter_id,
+                ),
+                report_paths=context.report_paths,
+                approval_path=context.approval_path,
+                data={
+                    "state": state_name,
+                    "chapter_id": target.chapter_id,
+                    "progress_completed": completed,
+                    "progress_total": total,
+                    "failure_reason": context.reason,
+                },
+            )
+
+        context_payload = json.loads(context.reason)
+        staged_txt = paths.staging / f"chuong-{target.chapter_id:04d}-staged.txt"
+        staged_yaml = paths.staging / f"chuong-{target.chapter_id:04d}-proposals.yaml"
+        payload = {
+            "state": "pending",
+            "chapter_id": target.chapter_id,
+            "slug": target.slug,
+            "original_title": target.original_title,
+            "progress_completed": completed,
+            "progress_total": total,
+            "raw_path": context_payload["raw_path"],
+            "style_path": context_payload["style_path"],
+            "glossary_path": context_payload["glossary_path"],
+            "glossary_context_path": context_payload["glossary_context_path"],
+            "prev_translation_path": context_payload["prev_translation_path"],
+            "staged_txt": str(staged_txt.resolve()),
+            "staged_yaml": str(staged_yaml.resolve()),
+            "is_fallback": context_payload["is_fallback"],
+            "fallback_reason": context_payload["fallback_reason"],
+            "staged_txt_exists": staged_txt.is_file(),
+            "staged_yaml_exists": staged_yaml.is_file(),
+        }
+        return OperationResult(
+            status=OperationStatus.OK,
+            reason=f"translation work item ready for chapter {target.chapter_id}",
+            progress=ProgressSummary(
+                completed=completed,
+                total=total,
+                current_chapter_id=target.chapter_id,
+            ),
+            data=payload,
+        )
+    except Exception as error:
+        return OperationResult(
+            status=OperationStatus.ERROR,
+            reason=f"Failed to prepare next translation work item: {error}",
+            data={
+                "state": "error",
+                "failure_reason": f"Failed to prepare next translation work item: {error}",
+            },
+        )
+
+
+def verify_staged_chapter(workspace_root: Path, chapter_id: int) -> OperationResult:
+    """Perform structural staged-output checks without replacing promotion gates."""
+    try:
+        workspace_root = workspace_root.resolve()
+        paths = workspace_paths(workspace_root.parent, workspace_root.name)
+        staged_txt = paths.staging / f"chuong-{chapter_id:04d}-staged.txt"
+        if not staged_txt.is_file() or not staged_txt.read_text(encoding="utf-8").strip():
+            reason = f"staged translation missing or empty: {staged_txt}"
+            return OperationResult(
+                status=OperationStatus.ERROR,
+                reason=reason,
+                data={
+                    "ok": False,
+                    "chapter_id": chapter_id,
+                    "first_line": None,
+                    "reason": reason,
+                },
+            )
+
+        text = staged_txt.read_text(encoding="utf-8")
+        lines = text.splitlines()
+        first_line = lines[0] if lines else ""
+        accepted_prefixes = (f"# Chương {chapter_id}", f"# Chuong {chapter_id}")
+        if not first_line.startswith(accepted_prefixes):
+            reason = f"line 1 must start with '# Chương {chapter_id}'"
+            return OperationResult(
+                status=OperationStatus.ERROR,
+                reason=reason,
+                data={
+                    "ok": False,
+                    "chapter_id": chapter_id,
+                    "first_line": first_line,
+                    "reason": reason,
+                },
+            )
+        if len(lines) < 2 or lines[1] != "":
+            reason = "line 2 must be blank"
+            return OperationResult(
+                status=OperationStatus.ERROR,
+                reason=reason,
+                data={
+                    "ok": False,
+                    "chapter_id": chapter_id,
+                    "first_line": first_line,
+                    "reason": reason,
+                },
+            )
+
+        return OperationResult(
+            status=OperationStatus.OK,
+            reason=f"staged chapter {chapter_id} structure verified",
+            data={
+                "ok": True,
+                "chapter_id": chapter_id,
+                "first_line": first_line,
+                "character_count": len(text),
+                "reason": None,
+            },
+        )
+    except Exception as error:
+        reason = f"Failed to verify staged chapter: {error}"
+        return OperationResult(
+            status=OperationStatus.ERROR,
+            reason=reason,
+            data={
+                "ok": False,
+                "chapter_id": chapter_id,
+                "first_line": None,
+                "reason": reason,
+            },
         )

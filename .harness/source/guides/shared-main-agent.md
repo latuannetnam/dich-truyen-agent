@@ -34,7 +34,9 @@ When retrieving metadata from source sites, prefer terminal-driven HTTP requests
 
 Never read raw source Chinese files or completed Vietnamese chapters into your own Main Agent session. Reading raw files quickly overwhelms the context window.
 
-For large books, delegate the translation loop to a Coordinator Subagent that handles bounded batches. The Coordinator must spawn specialized Translator Subagents for individual chapter translation tasks. The Translator Subagent is the only worker that performs file-level raw chapter reading.
+For large books, delegate the translation loop to a Coordinator Subagent that handles compact 5-chapter batches. The Coordinator must spawn specialized Translator Subagents for individual chapter translation tasks. The Translator Subagent is the only worker that performs file-level raw chapter reading.
+
+For 1000+ chapter books, full automation is allowed only through fresh compact batches. The Main Agent must re-query CLI state after each batch and must not accumulate promoted chapter arrays, raw text, completed translation text, or verbose per-chapter logs in its own context.
 
 ## Sequential Order & Context Handoff
 

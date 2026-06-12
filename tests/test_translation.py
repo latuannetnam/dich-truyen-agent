@@ -29,6 +29,8 @@ from dich_truyen_agent.workspace import (
     prepare_translation_context,
     promote_chapter_translation,
     get_next_pending_translation,
+    next_translation_work_item,
+    verify_staged_chapter,
 )
 
 
@@ -413,3 +415,169 @@ def test_get_next_pending_translation(test_workspace: Path) -> None:
     result = prepare_translation_context(test_workspace, 3)
     assert result.status is OperationStatus.BLOCKED
     assert "preceding chapter 2 translation is not completed" in result.reason
+
+
+def test_next_translation_work_item_returns_compact_pending_payload(test_workspace: Path) -> None:
+    paths = workspace_paths(test_workspace.parent, test_workspace.name)
+    report = paths.reports / "crawl.yaml"
+    report.write_text("review", encoding="utf-8")
+    approve_checkpoint(
+        test_workspace,
+        CheckpointType.CRAWL_APPROVED,
+        "reports/crawl.yaml",
+        ["raw/0001-chuong-0001.txt"],
+    )
+
+    result = next_translation_work_item(test_workspace)
+
+    assert result.status is OperationStatus.OK
+    payload = result.data
+    assert payload["state"] == "pending"
+    assert payload["chapter_id"] == 1
+    assert payload["progress_completed"] == 0
+    assert payload["progress_total"] == 3
+    assert payload["raw_path"] == str((paths.raw / "0001-chuong-0001.txt").resolve())
+    assert payload["style_path"] == str(paths.style.resolve())
+    assert payload["glossary_context_path"] == str(
+        (paths.staging / "chuong-0001-glossary-context.yaml").resolve()
+    )
+    assert payload["staged_txt"] == str(
+        (paths.staging / "chuong-0001-staged.txt").resolve()
+    )
+    assert payload["staged_yaml"] == str(
+        (paths.staging / "chuong-0001-proposals.yaml").resolve()
+    )
+    assert payload["staged_txt_exists"] is False
+    assert "raw_text" not in payload
+    assert "chapter_body" not in payload
+
+
+def test_next_translation_work_item_reports_completed_state(test_workspace: Path) -> None:
+    paths = workspace_paths(test_workspace.parent, test_workspace.name)
+    report = paths.reports / "crawl.yaml"
+    report.write_text("review", encoding="utf-8")
+    approve_checkpoint(test_workspace, CheckpointType.CRAWL_APPROVED, "reports/crawl.yaml", [])
+
+    for chapter_id in (1, 2, 3):
+        staged_txt = paths.staging / f"chuong-{chapter_id:04d}-staged.txt"
+        staged_txt.write_text(f"# Chương {chapter_id}\n\nNội dung chương {chapter_id}.", encoding="utf-8")
+        assert promote_chapter_translation(test_workspace, chapter_id).status is OperationStatus.OK
+
+    result = next_translation_work_item(test_workspace)
+
+    assert result.status is OperationStatus.OK
+    assert result.data == {
+        "state": "completed",
+        "progress_completed": 3,
+        "progress_total": 3,
+        "next_chapter_id": None,
+        "message": "all chapter translations completed",
+    }
+
+
+def test_next_translation_work_item_blocks_completed_future_gap(test_workspace: Path) -> None:
+    paths = workspace_paths(test_workspace.parent, test_workspace.name)
+    report = paths.reports / "crawl.yaml"
+    report.write_text("review", encoding="utf-8")
+    approve_checkpoint(test_workspace, CheckpointType.CRAWL_APPROVED, "reports/crawl.yaml", [])
+
+    state = load_yaml_model(paths.state, BookState)
+    ch3_state = next(c for c in state.chapters if c.chapter_id == 3)
+    promoted = paths.translations / "0003-chuong-0003.txt"
+    promoted.write_text("# Chương 3\n\nNội dung chương 3.", encoding="utf-8")
+    ch3_state.translation = StageRecord(
+        status=StageStatus.COMPLETED,
+        canonical_path="translations/0003-chuong-0003.txt",
+        sha256=sha256_file(promoted),
+        updated_at=datetime.now(UTC),
+    )
+    atomic_write_yaml(paths.state, state)
+
+    result = next_translation_work_item(test_workspace)
+
+    assert result.status is OperationStatus.BLOCKED
+    assert result.data["state"] == "blocked"
+    assert result.data["chapter_id"] == 1
+    assert result.data["completed_after_pending"] == [3]
+
+
+def test_verify_staged_chapter_is_structural_only(test_workspace: Path) -> None:
+    paths = workspace_paths(test_workspace.parent, test_workspace.name)
+    staged_txt = paths.staging / "chuong-0001-staged.txt"
+    staged_txt.write_text("# Chương 1 Tiên Nhân Chỉ Lộ\n\nTiên Ông chỉ đường.", encoding="utf-8")
+
+    result = verify_staged_chapter(test_workspace, 1)
+
+    assert result.status is OperationStatus.OK
+    assert result.data["ok"] is True
+    assert result.data["first_line"] == "# Chương 1 Tiên Nhân Chỉ Lộ"
+
+
+@pytest.mark.parametrize(
+    ("contents", "reason_fragment"),
+    [
+        ("", "missing or empty"),
+        ("Chương 1\n\nThiếu markdown header.", "must start with '# Chương 1'"),
+        ("# Chương 1\nBody without blank separator.", "line 2 must be blank"),
+    ],
+)
+def test_verify_staged_chapter_rejects_missing_or_malformed_output(
+    test_workspace: Path,
+    contents: str,
+    reason_fragment: str,
+) -> None:
+    paths = workspace_paths(test_workspace.parent, test_workspace.name)
+    staged_txt = paths.staging / "chuong-0001-staged.txt"
+    if contents:
+        staged_txt.write_text(contents, encoding="utf-8")
+
+    result = verify_staged_chapter(test_workspace, 1)
+
+    assert result.status is OperationStatus.ERROR
+    assert result.data["ok"] is False
+    assert reason_fragment in result.data["reason"]
+
+
+def test_next_translation_work_item_large_catalog_stays_compact(
+    books_root: Path,
+    metadata: BookMetadata,
+    style: TranslationStyle,
+) -> None:
+    catalog = ChapterCatalog(
+        chapters=[
+            ChapterCatalogEntry(
+                chapter_id=chapter_id,
+                slug=f"chuong-{chapter_id:04d}",
+                source_url=f"http://example.com/{chapter_id}",
+                original_title=f"第{chapter_id}章 标题",
+                raw_filename=f"{chapter_id:04d}-chuong-{chapter_id:04d}.txt",
+                translation_filename=f"{chapter_id:04d}-chuong-{chapter_id:04d}.txt",
+            )
+            for chapter_id in range(1, 1002)
+        ]
+    )
+    initialize_workspace(books_root, metadata, catalog, style)
+    paths = workspace_paths(books_root, metadata.book_slug)
+    raw_path = paths.raw / "0001-chuong-0001.txt"
+    raw_path.write_text("第一章正文", encoding="utf-8")
+    state = load_yaml_model(paths.state, BookState)
+    first = next(c for c in state.chapters if c.chapter_id == 1)
+    first.raw = StageRecord(
+        status=StageStatus.COMPLETED,
+        canonical_path="raw/0001-chuong-0001.txt",
+        sha256=sha256_file(raw_path),
+        updated_at=datetime.now(UTC),
+    )
+    atomic_write_yaml(paths.state, state)
+    (paths.reports / "crawl.yaml").write_text("review", encoding="utf-8")
+    approve_checkpoint(paths.root, CheckpointType.CRAWL_APPROVED, "reports/crawl.yaml", [])
+
+    result = next_translation_work_item(paths.root)
+    serialized = json.dumps(result.data, ensure_ascii=False)
+
+    assert result.status is OperationStatus.OK
+    assert result.data["state"] == "pending"
+    assert result.data["progress_total"] == 1001
+    assert "chapters" not in result.data
+    assert "第一章正文" not in serialized
+    assert len(serialized) < 2500

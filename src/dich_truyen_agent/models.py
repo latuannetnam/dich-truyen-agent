@@ -183,6 +183,7 @@ class OperationResult(PersistedModel):
     report_paths: list[str] = Field(default_factory=list)
     approval_path: str | None = None
     orphan_temp_paths: list[str] = Field(default_factory=list)
+    data: dict = Field(default_factory=dict)
 
 
 def as_workspace_relative(path: str) -> PurePosixPath:
@@ -287,4 +288,3 @@ class QAReport(PersistedModel):
     generated_at: datetime = Field(default_factory=datetime.now)
     summary: dict = Field(default_factory=dict)
     findings: list[QAFinding] = Field(default_factory=list)
-

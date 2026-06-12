@@ -31,6 +31,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Dich Truyen Agent deterministic helpers")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
+    def add_json_flag(command_parser: argparse.ArgumentParser) -> None:
+        command_parser.add_argument("--json", action="store_true")
+
     init = subparsers.add_parser("init-book")
     init.add_argument("--books-root", type=Path, default=Path("books"))
     init.add_argument("--slug", required=True)
@@ -52,6 +55,7 @@ def build_parser() -> argparse.ArgumentParser:
     gate = subparsers.add_parser("check-gate")
     gate.add_argument("--workspace", type=Path, required=True)
     gate.add_argument("--type", dest="checkpoint_type", choices=[item.value for item in CheckpointType], required=True)
+    add_json_flag(gate)
 
     validate = subparsers.add_parser("validate-style")
     validate.add_argument("--style", type=Path, required=True)
@@ -97,13 +101,25 @@ def build_parser() -> argparse.ArgumentParser:
     prep_trans = subparsers.add_parser("prepare-translation-context")
     prep_trans.add_argument("--workspace", type=Path, required=True)
     prep_trans.add_argument("--chapter-id", type=int, required=True)
+    add_json_flag(prep_trans)
 
     prom_ch = subparsers.add_parser("promote-chapter")
     prom_ch.add_argument("--workspace", type=Path, required=True)
     prom_ch.add_argument("--chapter-id", type=int, required=True)
+    add_json_flag(prom_ch)
 
     show_prog = subparsers.add_parser("show-translation-progress")
     show_prog.add_argument("--workspace", type=Path, required=True)
+    add_json_flag(show_prog)
+
+    next_work = subparsers.add_parser("next-translation-work-item")
+    next_work.add_argument("--workspace", type=Path, required=True)
+    add_json_flag(next_work)
+
+    verify_staged = subparsers.add_parser("verify-staged-chapter")
+    verify_staged.add_argument("--workspace", type=Path, required=True)
+    verify_staged.add_argument("--chapter-id", type=int, required=True)
+    add_json_flag(verify_staged)
 
     # Phase 5 Quality Assurance Commands
     check_trans = subparsers.add_parser("check-translation")
@@ -365,6 +381,26 @@ def run_command(args: argparse.Namespace) -> OperationResult:
                 status=OperationStatus.ERROR,
                 reason=f"Show translation progress failed: {e}",
             )
+    elif args.command == "next-translation-work-item":
+        from dich_truyen_agent.workspace import next_translation_work_item
+
+        try:
+            result = next_translation_work_item(args.workspace)
+        except Exception as e:
+            result = OperationResult(
+                status=OperationStatus.ERROR,
+                reason=f"Next translation work item failed: {e}",
+            )
+    elif args.command == "verify-staged-chapter":
+        from dich_truyen_agent.workspace import verify_staged_chapter
+
+        try:
+            result = verify_staged_chapter(args.workspace, args.chapter_id)
+        except Exception as e:
+            result = OperationResult(
+                status=OperationStatus.ERROR,
+                reason=f"Verify staged chapter failed: {e}",
+            )
     elif args.command == "check-translation":
         from dich_truyen_agent.qa import run_qa_check
         
@@ -490,6 +526,14 @@ def _print_result(result: OperationResult) -> None:
         print(f"approval: {result.approval_path}")
 
 
+def _print_json_result(result: OperationResult) -> None:
+    print(result.model_dump_json(indent=2))
+
+
 def main() -> None:
     args = build_parser().parse_args()
-    _print_result(run_command(args))
+    result = run_command(args)
+    if getattr(args, "json", False):
+        _print_json_result(result)
+    else:
+        _print_result(result)

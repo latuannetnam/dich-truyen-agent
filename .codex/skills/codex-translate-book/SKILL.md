@@ -20,6 +20,10 @@ Translate crawled and approved Chinese chapters sequentially with harness-native
 > **Strict External API Prohibition:**
 > You are strictly forbidden from using external LLM APIs (e.g., OpenRouter, OpenAI, Gemini) via Python scripts, curl, or any other external tool to perform the translation. You MUST only use the native harness subagent capability as specified in the dispatch block for this adapter.
 
+> [!IMPORTANT]
+> **Compact Long-Book Automation:**
+> Use the shared 5-chapter batch size for every harness. For 1000+ chapter books, repeat fresh compact batches until completion. Do not accumulate promoted chapter arrays, raw text, completed translation text, or verbose per-chapter logs in the Main Agent context.
+
 ---
 
 ## Core Workflow
@@ -52,68 +56,68 @@ Metadata translation uses `codex_metadata_translator`, and chapter translation u
 ```text
 spawn_agent(
   type="codex_coordinator",
-  prompt="Execute the translation loop for the next 20 pending chapters sequentially. For each chapter, query progress, prepare context, spawn codex_translator, verify staging, and promote."
+  prompt="Execute the compact translation loop for the next 5 pending chapters sequentially. For each chapter, fetch next-translation-work-item, spawn codex_translator, verify staging through verify-staged-chapter, and promote. Return only {status, processed_count, chapter_start, chapter_end, next_chapter_id, failure_reason}."
 )
 ```
 
 This path must use native Codex subagent delegation only, never external LLM APIs.
 
-### Step 2: Query Progress and Dispatch Coordinator
-The Main Agent checks overall translation progress:
+### Step 2: Fetch Progress and Dispatch Compact Coordinator
+The Main Agent fetches the next deterministic work item:
 ```bash
 $env:PYTHONUTF8=1
-uv run python main.py show-translation-progress --workspace books/<book-slug>
+uv run python main.py next-translation-work-item --workspace books/<book-slug> --json
 ```
-* **If completed:** Print the progress and report book completion.
+* **If completed:** Report book completion with compact counts only.
 * **If blocked:** Stop and report the gap to the user for repair.
-* **If pending:** The Main Agent spawns a **Coordinator Subagent** to handle a batch of pending chapters (e.g., the next 20 chapters) using the harness-native dispatch block above.
+* **If pending:** The Main Agent spawns a **Coordinator Subagent** to handle the next 5 pending chapters using the harness-native dispatch block above.
 
 > [!IMPORTANT]
 > **Enforced Stateless Iteration:**
-> 1. **Strict Batch Limit:** You must NEVER instruct a single Coordinator to translate the entire book. You must always specify a strict limit (e.g., 20 chapters) in your prompt.
+> 1. **Strict Batch Limit:** You must NEVER instruct a single Coordinator to translate the entire book. You must always specify the shared strict limit of 5 chapters in your prompt.
 > 2. **Fresh Instances:** When the Coordinator completes its batch, you must spawn a completely NEW Coordinator instance. Do not send follow-up instructions to the previous subagent.
-> 3. **Loop:** Repeat this cycle of spawning fresh Coordinators until the progress check returns "completed".
+> 3. **Loop:** Repeat this cycle of spawning fresh Coordinators until `next-translation-work-item` returns `completed`.
+> 4. **Compact Output:** Do not accumulate chapter arrays in the Main Agent. Re-query CLI state after each batch.
 
 ### Step 3: The Coordinator Micro-Loop
-**The following steps (3 to 8) are executed purely by the Coordinator Subagent.**
-Inside the Coordinator, query the exact next pending chapter:
+**The following steps (3 to 7) are executed purely by the Coordinator Subagent.**
+Inside the Coordinator, fetch the exact next pending work item:
 ```bash
 $env:PYTHONUTF8=1
-uv run python main.py show-translation-progress --workspace books/<book-slug>
+uv run python main.py next-translation-work-item --workspace books/<book-slug> --json
 ```
-Parse the JSON payload to get `chapter_id`.
+Parse `data`. Stop on `completed`, `blocked`, or `error`.
 
-### Step 4: Fetch Translation Context (Coordinator)
-Prepare context paths:
+### Step 4: Spawn the Translator Subagent (Coordinator)
+The Coordinator spawns the Translator subagent using the harness-native mechanism in the dispatch block, passing the absolute paths reported by `next-translation-work-item`, including `glossary_context_path`.
+
+### Step 5: Lightweight Staging Verification (Coordinator)
+The Coordinator runs structural verification through the CLI:
 ```bash
 $env:PYTHONUTF8=1
-uv run python main.py prepare-translation-context --workspace books/<book-slug> --chapter-id <chapter_id>
+uv run python main.py verify-staged-chapter --workspace books/<book-slug> --chapter-id <chapter_id> --json
 ```
+This does not replace glossary validation.
 
-### Step 5: Resolve Absolute Paths (Coordinator)
-Construct the absolute file paths for all input and output files by resolving their paths relative to the project root.
-
-### Step 6: Spawn the Translator Subagent (Coordinator)
-The Coordinator spawns the Translator subagent using the harness-native mechanism in the dispatch block, passing the absolute paths reported by `prepare-translation-context`, including `glossary_context_path`.
-
-### Step 7: Lightweight Staging Verification (Coordinator)
-The Coordinator reads only the first 3 lines of `books/<book-slug>/staging/chuong-{chapter_id:04d}-staged.txt` to confirm the `# [title_vi]` format.
-
-### Step 8: Atomically Promote and Loop (Coordinator)
+### Step 6: Atomically Promote and Loop (Coordinator)
 The Coordinator promotes the chapter:
 ```bash
 $env:PYTHONUTF8=1
-uv run python main.py promote-chapter --workspace books/<book-slug> --chapter-id <chapter_id>
+uv run python main.py promote-chapter --workspace books/<book-slug> --chapter-id <chapter_id> --json
 ```
 If successful, the Coordinator loops back to Step 3 until its assigned batch limit is reached.
 If promotion is blocked by glossary consistency, retry the same chapter and include the `promote-chapter` reason in the translator prompt so the next attempt uses the existing glossary mapping and avoids rejected aliases.
 * **Retries:** Coordinator retries failures up to 3 times with polite backoffs before halting.
+
+### Step 7: Compact Coordinator Result
+Return only `{status, processed_count, chapter_start, chapter_end, next_chapter_id, failure_reason}`. Do not return cumulative chapter lists or per-chapter logs.
 
 ---
 
 ## Common Pitfalls
 
 * **Main Agent Context Overload:** Reading raw or complete translations in your main session immediately floods your token window. Keep all file-level reads locked inside the isolation subagent.
+* **Verbose Long-Book Summaries:** Returning cumulative chapter lists across hundreds of batches will exhaust the Main Agent context. Use compact batch counters and re-query CLI state.
 * **Bypassing Lexical Sandbox:** Leaving modern English conjunctions ("but", "while") or articles ("the") in classical Xianxia/Tu Chan Vietnamese prose. Always enforce the Lexical Sandbox mapping table check.
 * **Incorrect Metadata Updates:** Trying to manually search/replace inside `book.json` or `state.yaml`. Always use the CLI commands (`promote-chapter`, etc.) to update metadata.
 * **Using External LLM APIs:** Attempting to use Python or shell scripts to send raw text to external APIs (OpenAI, OpenRouter, etc.) instead of spawning a subagent. This is strictly prohibited and bypasses the native orchestration framework.
