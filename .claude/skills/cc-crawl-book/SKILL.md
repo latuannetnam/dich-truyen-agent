@@ -36,13 +36,36 @@ Crawl a Chinese novel sequentially and resume downloads into a local workspace u
      uv run python main.py promote-crawl-profile --workspace books/<book-slug>
      ```
 
-3. **Handling Cloudflare, Anti-Bot & Evasions**:
-   If the target site employs Cloudflare or other anti-bot protection (e.g., www.69shuba.com):
-   - **Automation Flag Bypass**: Launch Chromium with evasion flags such as `--disable-blink-features=AutomationControlled` to prevent detection.
-   - **Remove webdriver Property**: Ensure `navigator.webdriver` is removed or overwritten (`Object.defineProperty(navigator, 'webdriver', {get: () => undefined})`) before navigation starts.
-   - **Session Cookie Pre-Fetching**: Prior to extracting chapter contents, visit the book index/catalog page (e.g., `https://www.69shuba.com/book/<book_id>/`) in the browser context. This allows Cloudflare to set necessary security session cookies (like `cf_clearance`).
-   - **Self-Healing Loop for Challenge Pages**: Implement a loop that checks the page title for challenge text (e.g., "Just a moment...", "Attention Required!"). If detected, poll every 1 second for up to 10 seconds to allow background verification processes to complete instead of failing immediately.
-   - **Validation Overrides**: When short author notice chapters or status updates (e.g., 70-80 characters) trigger chapter length warnings, edit the local `crawl-profile.yaml` inside the workspace to lower `min_chapter_characters` (e.g., set to `20`) to allow these chapters to pass validation.
+3. **Handling Dynamic Browser And Anti-Bot Cases**:
+   If the target site needs JavaScript rendering, session warmups, challenge waits, or browser evasions, prefer a local `crawl-profile.yaml` override:
+   ```yaml
+   browser:
+     enabled: true
+     strategy: noop
+     launch_args:
+       - "--disable-blink-features=AutomationControlled"
+     init_scripts:
+       - "delete Object.getPrototypeOf(navigator).webdriver;"
+     challenge:
+       title_markers:
+         - "just a moment"
+         - "attention required"
+       max_wait_seconds: 15
+       poll_seconds: 1.0
+     session:
+       warmups:
+         - url_pattern: "https?://example\\.com/txt/(?P<book_id>\\d+)/\\d+"
+           warmup_url: "https://example.com/book/{book_id}/"
+     actions:
+       - purpose: index
+         action: click
+         selector: ".catalog-all"
+         wait_for_selector: ".clist .u-chapter li a"
+   ```
+   - Use declarative profile settings for common browser behavior: launch arguments, user agent, viewport, init scripts, challenge title polling, warmup URLs, response waits, selector waits, and simple clicks.
+   - Use `browser.strategy: <name>` only when the behavior is too procedural for YAML and the named browser strategy exists in the Python strategy registry.
+   - Do not hardcode site-specific browser behavior in `browser.py`; keep new site behavior in the active crawl profile or a small named browser strategy.
+   - Promote the local override to shared templates only after validating it against the source domain.
 
 4. **Verify and Audit the Report**:
    Inspect the structured crawl report written under `reports/crawl.yaml` using bounded file-reading.

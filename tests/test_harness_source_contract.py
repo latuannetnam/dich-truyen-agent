@@ -106,3 +106,11 @@ def test_guardrail_policy_source_exists():
     assert "OPENAI_API_KEY" in policy["env_vars"]
     assert "api.openai.com" in policy["endpoints"]
     assert "openai" in policy["imports"]
+
+
+def test_crawl_skill_describes_profile_driven_browser_settings() -> None:
+    text = (ROOT / ".harness" / "source" / "skills" / "crawl-book.md").read_text(encoding="utf-8")
+
+    assert "browser:" in text
+    assert "named browser strategy" in text
+    assert "Do not hardcode site-specific browser behavior in `browser.py`" in text
