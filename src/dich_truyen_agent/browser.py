@@ -70,16 +70,53 @@ class PlaywrightRenderer:
                         print(f"[DEBUG] Session establishment failed: {e}")
 
             # Wait until DOM is loaded (domcontentloaded is faster and safer than networkidle on ad-heavy sites)
-            await self._page.goto(url, wait_until="domcontentloaded", timeout=30000)
-            # Self-healing wait for Cloudflare challenge resolution
-            print(f"[DEBUG] Playwright chapter navigation complete. Initial title: {await self._page.title()}")
-            for i in range(10):
+            is_ixdzs = any(domain in url for domain in ["ixdzs8.com", "ixdzs.hk", "ixdzs.tw"])
+            is_index_page = is_ixdzs and not re.search(r'/p\d+\.html', url)
+            
+            if is_index_page:
+                try:
+                    print(f"[DEBUG] Navigating index page and waiting for clist response...")
+                    async with self._page.expect_response(lambda response: "clist" in response.url, timeout=20000) as response_info:
+                        await self._page.goto(url, wait_until="domcontentloaded", timeout=30000)
+                    print(f"[DEBUG] clist response received!")
+                except Exception as e:
+                    print(f"[DEBUG] Failed to capture clist response: {e}")
+                    try:
+                        await self._page.goto(url, wait_until="domcontentloaded", timeout=30000)
+                    except Exception:
+                        pass
+            else:
+                await self._page.goto(url, wait_until="domcontentloaded", timeout=30000)
+            # Self-healing wait for Cloudflare or custom browser verification challenges
+            print(f"[DEBUG] Playwright navigation complete. Initial title: {await self._page.title()}")
+            for i in range(15):
                 title = await self._page.title()
-                if "just a moment" not in title.lower() and "attention required" not in title.lower():
-                    print(f"[DEBUG] Playwright chapter resolved after {i}s. Title: {title}")
+                title_lower = title.lower()
+                is_challenge = (
+                    "just a moment" in title_lower
+                    or "attention required" in title_lower
+                    or "正在验证" in title_lower
+                    or "安全验证" in title_lower
+                    or "验证浏览器" in title_lower
+                )
+                if not is_challenge:
+                    print(f"[DEBUG] Playwright page resolved after {i}s. Title: {title}")
                     break
-                print(f"[DEBUG] Playwright chapter waiting {i+1}s... Title: {title}")
+                print(f"[DEBUG] Playwright page challenge active. Waiting {i+1}s... Title: {title}")
                 await asyncio.sleep(1)
+
+            # If the page has a catalog button, click it to expand the catalog list
+            try:
+                catalog_btn = await self._page.query_selector(".catalog-all")
+                if catalog_btn:
+                    print("[DEBUG] Found .catalog-all element, clicking to expand catalog.")
+                    await catalog_btn.click()
+                    # Wait for the catalog to populate
+                    await self._page.wait_for_selector(".clist .u-chapter li a", timeout=10000)
+                    print("[DEBUG] Catalog expanded and populated successfully.")
+            except Exception as e:
+                print(f"[DEBUG] Catalog expansion failed or timed out: {e}")
+
             html = await self._page.content()
             return html
         except Exception:
