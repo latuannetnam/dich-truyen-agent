@@ -9,6 +9,7 @@ from dich_truyen_agent.models import (
     ChapterCatalogEntry,
     ChapterState,
     CheckpointRecord,
+    CrawlProfile,
     OperationResult,
     OperationStatus,
     StageRecord,
@@ -104,3 +105,101 @@ def test_translation_settings_rejects_invalid_batch_size(monkeypatch) -> None:
 def test_completed_stage_record_requires_hash_and_path() -> None:
     with pytest.raises(ValidationError):
         StageRecord(status=StageStatus.COMPLETED)
+
+
+def test_crawl_profile_defaults_to_browser_disabled() -> None:
+    profile = CrawlProfile(
+        domain="example.com",
+        index={"chapter_link_selector": ".chapters a"},
+        chapter={"title_selector": "h1", "content_selector": "#content"},
+    )
+
+    assert profile.browser.enabled is False
+    assert profile.browser.strategy is None
+    assert profile.browser.viewport.width == 1280
+    assert profile.browser.viewport.height == 800
+    assert profile.browser.navigation.wait_until == "domcontentloaded"
+    assert profile.browser.navigation.timeout_milliseconds == 30000
+    assert profile.browser.actions == []
+
+
+def test_crawl_browser_profile_accepts_declarative_warmups_and_actions() -> None:
+    profile = CrawlProfile(
+        domain="www.69shuba.com",
+        index={"chapter_link_selector": "#catalog a"},
+        chapter={"title_selector": "h1", "content_selector": ".txtnav"},
+        browser={
+            "enabled": True,
+            "strategy": "noop",
+            "launch_args": ["--disable-blink-features=AutomationControlled"],
+            "user_agent": "Mozilla/5.0",
+            "init_scripts": ["delete Object.getPrototypeOf(navigator).webdriver;"],
+            "challenge": {
+                "title_markers": ["just a moment", "正在验证"],
+                "max_wait_seconds": 15,
+                "poll_seconds": 1.0,
+            },
+            "session": {
+                "warmups": [
+                    {
+                        "url_pattern": r"https?://(?:www\.)?69shuba\.com/txt/(?P<book_id>\d+)/\d+",
+                        "warmup_url": "https://www.69shuba.com/book/{book_id}/",
+                    }
+                ]
+            },
+            "actions": [
+                {
+                    "purpose": "index",
+                    "action": "click",
+                    "selector": ".catalog-all",
+                    "wait_for_selector": ".clist .u-chapter li a",
+                    "timeout_milliseconds": 10000,
+                }
+            ],
+        },
+    )
+
+    assert profile.browser.enabled is True
+    assert profile.browser.strategy == "noop"
+    assert profile.browser.session.warmups[0].warmup_url.endswith("{book_id}/")
+    assert profile.browser.actions[0].purpose == "index"
+    assert profile.browser.actions[0].wait_for_selector == ".clist .u-chapter li a"
+
+
+def test_crawl_browser_profile_rejects_invalid_action_type() -> None:
+    with pytest.raises(ValidationError):
+        CrawlProfile(
+            domain="example.com",
+            index={"chapter_link_selector": ".chapters a"},
+            chapter={"title_selector": "h1", "content_selector": "#content"},
+            browser={"actions": [{"action": "hover", "selector": ".x"}]},
+        )
+
+
+def test_crawl_browser_profile_rejects_click_without_selector() -> None:
+    with pytest.raises(ValidationError, match="selector"):
+        CrawlProfile(
+            domain="example.com",
+            index={"chapter_link_selector": ".chapters a"},
+            chapter={"title_selector": "h1", "content_selector": "#content"},
+            browser={"actions": [{"action": "click"}]},
+        )
+
+
+def test_crawl_browser_profile_rejects_unknown_warmup_placeholder() -> None:
+    with pytest.raises(ValidationError, match="unknown warmup placeholder"):
+        CrawlProfile(
+            domain="example.com",
+            index={"chapter_link_selector": ".chapters a"},
+            chapter={"title_selector": "h1", "content_selector": "#content"},
+            browser={
+                "session": {
+                    "warmups": [
+                        {
+                            "url_pattern": r"https://example\.com/book/(?P<book_id>\d+)",
+                            "warmup_url": "https://example.com/book/{chapter_id}/",
+                        }
+                    ]
+                }
+            },
+        )

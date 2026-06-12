@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import re
 from datetime import datetime
 from enum import Enum
 from pathlib import PurePosixPath
 from pathlib import Path
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -156,6 +158,107 @@ class CrawlValidationProfile(PersistedModel):
     min_chapter_characters: int = Field(default=1, gt=0)
 
 
+class CrawlBrowserViewportProfile(PersistedModel):
+    width: int = Field(default=1280, gt=0)
+    height: int = Field(default=800, gt=0)
+
+
+class CrawlBrowserChallengeProfile(PersistedModel):
+    title_markers: list[str] = Field(default_factory=list)
+    max_wait_seconds: float = Field(default=0, ge=0)
+    poll_seconds: float = Field(default=1.0, gt=0)
+
+    @model_validator(mode="after")
+    def reject_blank_title_markers(self) -> CrawlBrowserChallengeProfile:
+        if any(not marker.strip() for marker in self.title_markers):
+            raise ValueError("browser challenge title markers must not be blank")
+        return self
+
+
+class CrawlBrowserSessionWarmupProfile(PersistedModel):
+    url_pattern: str | None = Field(default=None, min_length=1)
+    warmup_url: str = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def validate_warmup_placeholders(self) -> CrawlBrowserSessionWarmupProfile:
+        compiled_pattern = None
+        if self.url_pattern is not None:
+            try:
+                compiled_pattern = re.compile(self.url_pattern)
+            except re.error as exc:
+                raise ValueError(f"invalid browser warmup url_pattern: {exc}") from exc
+
+        placeholders = set(re.findall(r"{([A-Za-z_][A-Za-z0-9_]*)}", self.warmup_url))
+        if not placeholders:
+            return self
+        if compiled_pattern is None:
+            raise ValueError("warmup URL placeholders require url_pattern")
+
+        groups = set(compiled_pattern.groupindex)
+        unknown = sorted(placeholders - groups)
+        if unknown:
+            raise ValueError(f"unknown warmup placeholder(s): {unknown}")
+        return self
+
+
+class CrawlBrowserSessionProfile(PersistedModel):
+    warmups: list[CrawlBrowserSessionWarmupProfile] = Field(default_factory=list)
+
+
+class CrawlBrowserNavigationProfile(PersistedModel):
+    wait_until: Literal["commit", "domcontentloaded", "load", "networkidle"] = "domcontentloaded"
+    timeout_milliseconds: int = Field(default=30000, gt=0)
+
+
+class CrawlBrowserIndexProfile(PersistedModel):
+    wait_for_response_url_contains: list[str] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def reject_blank_response_markers(self) -> CrawlBrowserIndexProfile:
+        if any(not marker.strip() for marker in self.wait_for_response_url_contains):
+            raise ValueError("browser response URL markers must not be blank")
+        return self
+
+
+class CrawlBrowserActionProfile(PersistedModel):
+    purpose: Literal["all", "index", "chapter"] = "all"
+    action: Literal["click", "wait_for_selector", "wait_for_response_url_contains"]
+    selector: str | None = Field(default=None, min_length=1)
+    wait_for_selector: str | None = Field(default=None, min_length=1)
+    url_contains: str | None = Field(default=None, min_length=1)
+    timeout_milliseconds: int = Field(default=10000, gt=0)
+
+    @model_validator(mode="after")
+    def validate_action_target(self) -> CrawlBrowserActionProfile:
+        if self.action in {"click", "wait_for_selector"} and not self.selector:
+            raise ValueError(f"browser action {self.action!r} requires selector")
+        if self.action == "wait_for_response_url_contains" and not self.url_contains:
+            raise ValueError("browser response wait action requires url_contains")
+        return self
+
+
+class CrawlBrowserProfile(PersistedModel):
+    enabled: bool = False
+    strategy: str | None = Field(default=None, min_length=1)
+    launch_args: list[str] = Field(default_factory=list)
+    user_agent: str | None = Field(default=None, min_length=1)
+    viewport: CrawlBrowserViewportProfile = Field(default_factory=CrawlBrowserViewportProfile)
+    init_scripts: list[str] = Field(default_factory=list)
+    challenge: CrawlBrowserChallengeProfile = Field(default_factory=CrawlBrowserChallengeProfile)
+    session: CrawlBrowserSessionProfile = Field(default_factory=CrawlBrowserSessionProfile)
+    navigation: CrawlBrowserNavigationProfile = Field(default_factory=CrawlBrowserNavigationProfile)
+    index: CrawlBrowserIndexProfile = Field(default_factory=CrawlBrowserIndexProfile)
+    actions: list[CrawlBrowserActionProfile] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def reject_blank_string_lists(self) -> CrawlBrowserProfile:
+        for field_name in ("launch_args", "init_scripts"):
+            values = getattr(self, field_name)
+            if any(not value.strip() for value in values):
+                raise ValueError(f"browser {field_name} entries must not be blank")
+        return self
+
+
 class CrawlProfile(PersistedModel):
     schema_version: int = 1
     domain: str = Field(min_length=1)
@@ -163,6 +266,7 @@ class CrawlProfile(PersistedModel):
     chapter: CrawlChapterProfile
     encoding: CrawlEncodingProfile = Field(default_factory=CrawlEncodingProfile)
     validation: CrawlValidationProfile = Field(default_factory=CrawlValidationProfile)
+    browser: CrawlBrowserProfile = Field(default_factory=CrawlBrowserProfile)
 
 
 class ProfileSource(PersistedModel):
