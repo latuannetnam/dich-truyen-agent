@@ -14,6 +14,7 @@ from dich_truyen_agent.models import (
     OperationResult,
     OperationStatus,
     GlossaryTerm,
+    TranslationSettings,
 )
 from dich_truyen_agent.paths import workspace_paths
 from dich_truyen_agent.storage import atomic_write_yaml
@@ -120,6 +121,9 @@ def build_parser() -> argparse.ArgumentParser:
     verify_staged.add_argument("--workspace", type=Path, required=True)
     verify_staged.add_argument("--chapter-id", type=int, required=True)
     add_json_flag(verify_staged)
+
+    show_trans_settings = subparsers.add_parser("show-translation-settings")
+    add_json_flag(show_trans_settings)
 
     # Phase 5 Quality Assurance Commands
     check_trans = subparsers.add_parser("check-translation")
@@ -400,6 +404,20 @@ def run_command(args: argparse.Namespace) -> OperationResult:
             result = OperationResult(
                 status=OperationStatus.ERROR,
                 reason=f"Verify staged chapter failed: {e}",
+            )
+    elif args.command == "show-translation-settings":
+        try:
+            settings = TranslationSettings(_env_file=PROJECT_ROOT / ".env")
+            result = OperationResult(
+                status=OperationStatus.OK,
+                reason="translation settings loaded",
+                data={"batch_size": settings.batch_size},
+            )
+        except Exception as e:
+            result = OperationResult(
+                status=OperationStatus.ERROR,
+                reason=f"Show translation settings failed: {e}",
+                data={"failure_reason": str(e)},
             )
     elif args.command == "check-translation":
         from dich_truyen_agent.qa import run_qa_check

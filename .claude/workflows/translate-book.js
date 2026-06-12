@@ -37,7 +37,8 @@ const TRANSLATOR_SCHEMA = {
 // ----- Workflow body -----
 
 const workspace = (args && args.workspace) || 'books/<book-slug>'
-const batchLimit = (args && args.max_chapters) || 5
+const explicitBatchLimit = args && args.max_chapters != null ? args.max_chapters : null
+let batchLimit = explicitBatchLimit || 5
 const maxRetries = 3
 
 let processedCount = 0
@@ -62,7 +63,6 @@ const runJsonCommand = async (label, command) => agent(
 )
 
 log(`Workspace: ${workspace}`)
-log(`Batch limit: ${batchLimit}`)
 
 // Phase 1: Verify crawl gate
 phase('Verify gate')
@@ -74,6 +74,19 @@ const gate = await runJsonCommand(
 if (!gate || gate.status !== 'ok') {
   return compactResult('blocked', gate ? gate.reason : 'crawl-approved gate check returned null')
 }
+
+if (explicitBatchLimit === null) {
+  const settings = await runJsonCommand(
+    'translation-settings',
+    `uv run python main.py show-translation-settings --json`
+  )
+  if (!settings || settings.status !== 'ok' || !settings.data || !settings.data.batch_size) {
+    return compactResult('error', settings ? settings.reason : 'show-translation-settings returned null')
+  }
+  batchLimit = settings.data.batch_size
+}
+
+log(`Batch limit: ${batchLimit}`)
 
 // Phase 2: Sequential compact translation loop
 phase('Translate')

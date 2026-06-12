@@ -69,7 +69,15 @@ def skill_frontmatter(harness: str, skill: str) -> str:
 
 def translate_orchestration(harness: str) -> str:
     if harness == "oc":
-        return """### Step 2: Run the Embedded Compact OpenCode Loop
+        return """### Step 2: Load Effective Batch Size
+Fetch translation settings before entering the loop:
+```bash
+$env:PYTHONUTF8=1
+uv run python main.py show-translation-settings --json
+```
+Use `data.batch_size` unless the user supplied an explicit runtime override. The built-in default is 5.
+
+### Step 3: Run the Embedded Compact OpenCode Loop
 The Main Agent fetches the next deterministic work item:
 ```bash
 $env:PYTHONUTF8=1
@@ -79,10 +87,10 @@ uv run python main.py next-translation-work-item --workspace books/<book-slug> -
 * **If blocked:** Stop and report the gap to the user for repair.
 * **If pending:** Continue with the next pending chapter inside this OpenCode skill loop.
 
-### Step 3: Dispatch the Isolated OpenCode Worker
+### Step 4: Dispatch the Isolated OpenCode Worker
 Use the OpenCode `task(` dispatch shown above with `subagent_type="general"` and `oc-translator` instructions, passing the absolute paths reported by `next-translation-work-item`, including `glossary_context_path`.
 
-### Step 4: Lightweight Staging Verification
+### Step 5: Lightweight Staging Verification
 Run structural verification through the CLI:
 ```bash
 $env:PYTHONUTF8=1
@@ -90,18 +98,26 @@ uv run python main.py verify-staged-chapter --workspace books/<book-slug> --chap
 ```
 This does not replace glossary validation.
 
-### Step 5: Atomically Promote and Continue
+### Step 6: Atomically Promote and Continue
 Promote the chapter:
 ```bash
 $env:PYTHONUTF8=1
 uv run python main.py promote-chapter --workspace books/<book-slug> --chapter-id <chapter_id> --json
 ```
-If successful, loop back to Step 2 for the next pending chapter until the shared 5-chapter batch limit is reached.
+If successful, loop back to Step 3 for the next pending chapter until the effective `batch_size` limit is reached.
 If promotion is blocked by glossary consistency, retry the same chapter and include the `promote-chapter` reason in the translator prompt so the next attempt uses the existing glossary mapping and avoids rejected aliases.
 * **Retries:** Retry failures up to 3 times with polite backoffs before halting.
 * **Compact output:** Return only `{status, processed_count, chapter_start, chapter_end, next_chapter_id, failure_reason}`. Do not return cumulative chapter lists."""
 
-    return """### Step 2: Fetch Progress and Dispatch Compact Coordinator
+    return """### Step 2: Load Effective Batch Size
+Fetch translation settings before dispatching a coordinator:
+```bash
+$env:PYTHONUTF8=1
+uv run python main.py show-translation-settings --json
+```
+Use `data.batch_size` unless the user supplied an explicit runtime override. The built-in default is 5.
+
+### Step 3: Fetch Progress and Dispatch Compact Coordinator
 The Main Agent fetches the next deterministic work item:
 ```bash
 $env:PYTHONUTF8=1
@@ -109,17 +125,17 @@ uv run python main.py next-translation-work-item --workspace books/<book-slug> -
 ```
 * **If completed:** Report book completion with compact counts only.
 * **If blocked:** Stop and report the gap to the user for repair.
-* **If pending:** The Main Agent spawns a **Coordinator Subagent** to handle the next 5 pending chapters using the harness-native dispatch block above.
+* **If pending:** The Main Agent spawns a **Coordinator Subagent** to handle the next `batch_size` pending chapters using the harness-native dispatch block above.
 
 > [!IMPORTANT]
 > **Enforced Stateless Iteration:**
-> 1. **Strict Batch Limit:** You must NEVER instruct a single Coordinator to translate the entire book. You must always specify the shared strict limit of 5 chapters in your prompt.
+> 1. **Strict Batch Limit:** You must NEVER instruct a single Coordinator to translate the entire book. You must always specify the effective `batch_size` in your prompt.
 > 2. **Fresh Instances:** When the Coordinator completes its batch, you must spawn a completely NEW Coordinator instance. Do not send follow-up instructions to the previous subagent.
 > 3. **Loop:** Repeat this cycle of spawning fresh Coordinators until `next-translation-work-item` returns `completed`.
 > 4. **Compact Output:** Do not accumulate chapter arrays in the Main Agent. Re-query CLI state after each batch.
 
-### Step 3: The Coordinator Micro-Loop
-**The following steps (3 to 7) are executed purely by the Coordinator Subagent.**
+### Step 4: The Coordinator Micro-Loop
+**The following steps (4 to 8) are executed purely by the Coordinator Subagent.**
 Inside the Coordinator, fetch the exact next pending work item:
 ```bash
 $env:PYTHONUTF8=1
@@ -127,10 +143,10 @@ uv run python main.py next-translation-work-item --workspace books/<book-slug> -
 ```
 Parse `data`. Stop on `completed`, `blocked`, or `error`.
 
-### Step 4: Spawn the Translator Subagent (Coordinator)
+### Step 5: Spawn the Translator Subagent (Coordinator)
 The Coordinator spawns the Translator subagent using the harness-native mechanism in the dispatch block, passing the absolute paths reported by `next-translation-work-item`, including `glossary_context_path`.
 
-### Step 5: Lightweight Staging Verification (Coordinator)
+### Step 6: Lightweight Staging Verification (Coordinator)
 The Coordinator runs structural verification through the CLI:
 ```bash
 $env:PYTHONUTF8=1
@@ -138,17 +154,17 @@ uv run python main.py verify-staged-chapter --workspace books/<book-slug> --chap
 ```
 This does not replace glossary validation.
 
-### Step 6: Atomically Promote and Loop (Coordinator)
+### Step 7: Atomically Promote and Loop (Coordinator)
 The Coordinator promotes the chapter:
 ```bash
 $env:PYTHONUTF8=1
 uv run python main.py promote-chapter --workspace books/<book-slug> --chapter-id <chapter_id> --json
 ```
-If successful, the Coordinator loops back to Step 3 until its assigned batch limit is reached.
+If successful, the Coordinator loops back to Step 4 until its assigned batch limit is reached.
 If promotion is blocked by glossary consistency, retry the same chapter and include the `promote-chapter` reason in the translator prompt so the next attempt uses the existing glossary mapping and avoids rejected aliases.
 * **Retries:** Coordinator retries failures up to 3 times with polite backoffs before halting.
 
-### Step 7: Compact Coordinator Result
+### Step 8: Compact Coordinator Result
 Return only `{status, processed_count, chapter_start, chapter_end, next_chapter_id, failure_reason}`. Do not return cumulative chapter lists or per-chapter logs."""
 
 

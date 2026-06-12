@@ -15,7 +15,15 @@ Translate crawled and approved Chinese chapters sequentially with harness-native
 
 > [!IMPORTANT]
 > **Compact Long-Book Automation:**
-> Use the shared 5-chapter batch size for every harness. For 1000+ chapter books, repeat fresh compact batches until completion. Do not accumulate promoted chapter arrays, raw text, completed translation text, or verbose per-chapter logs in the Main Agent context.
+> Use the shared configurable batch size for every harness. The default is 5 chapters and can be overridden with `DICH_TRUYEN_TRANSLATION_BATCH_SIZE` in the project `.env` file. For 1000+ chapter books, repeat fresh compact batches until completion. Do not accumulate promoted chapter arrays, raw text, completed translation text, or verbose per-chapter logs in the Main Agent context.
+
+Effective translation settings are loaded with:
+```bash
+$env:PYTHONUTF8=1
+uv run python main.py show-translation-settings --json
+```
+
+Explicit runtime arguments override `.env`; `.env` overrides the built-in default of 5.
 
 ---
 

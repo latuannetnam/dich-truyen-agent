@@ -156,6 +156,33 @@ def test_compact_translation_commands_accept_json_flag(tmp_path: Path) -> None:
     assert promote_args.json is True
 
 
+def test_cli_help_lists_translation_settings_command(capsys) -> None:
+    parser = build_parser()
+    parser.print_help()
+    output = capsys.readouterr().out
+    assert "show-translation-settings" in output
+
+
+def test_show_translation_settings_returns_batch_size(monkeypatch) -> None:
+    monkeypatch.setenv("DICH_TRUYEN_TRANSLATION_BATCH_SIZE", "9")
+    args = build_parser().parse_args(["show-translation-settings", "--json"])
+
+    result = run_command(args)
+
+    assert result.status is OperationStatus.OK
+    assert result.data["batch_size"] == 9
+
+
+def test_show_translation_settings_reports_invalid_batch_size(monkeypatch) -> None:
+    monkeypatch.setenv("DICH_TRUYEN_TRANSLATION_BATCH_SIZE", "0")
+    args = build_parser().parse_args(["show-translation-settings", "--json"])
+
+    result = run_command(args)
+
+    assert result.status is OperationStatus.ERROR
+    assert "batch_size" in result.reason
+
+
 def test_cli_validate_crawl_profile(tmp_path: Path) -> None:
     # Setup dummy workspace
     workspace = tmp_path / "books" / "demo-book"

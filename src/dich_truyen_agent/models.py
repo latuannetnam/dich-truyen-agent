@@ -126,6 +126,15 @@ class CrawlSettings(BaseSettings):
     user_agent: str = "dich-truyen-agent/0.1"
 
 
+class TranslationSettings(BaseSettings):
+    model_config = SettingsConfigDict(
+        env_prefix="DICH_TRUYEN_TRANSLATION_",
+        extra="ignore",
+    )
+
+    batch_size: int = Field(default=5, ge=1)
+
+
 class CrawlIndexProfile(PersistedModel):
     chapter_link_selector: str = Field(min_length=1)
     pagination_selector: str | None = None

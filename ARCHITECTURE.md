@@ -10,7 +10,7 @@ For setup and everyday usage, see [README.md](README.md).
 
 ## Architecture Versioning
 
-This document describes **Translation Orchestration Architecture v2**.
+This document describes **Translation Orchestration Architecture v2.1**.
 
 Architecture changes are versioned when they alter durable workspace contracts,
 CLI orchestration contracts, generated harness behavior, or recovery semantics.
@@ -24,6 +24,9 @@ Current versions:
   batch contract, deterministic JSON CLI work items, structural staging
   verification through the CLI, and compact coordinator summaries for 1000+
   chapter books.
+- **v2.1 - configurable compact batch size:** the compact orchestration batch
+  size defaults to 5 but can be configured from project `.env` with
+  `DICH_TRUYEN_TRANSLATION_BATCH_SIZE`.
 
 Versioned changes must update:
 
@@ -158,10 +161,20 @@ canonical names and avoid known bad variants.
 ### 4. Translate Sequentially With Isolated Subagents
 
 The active harness translate skill runs a compact bounded loop. All harnesses
-share the same default batch size: **5 chapters per coordinator/workflow
-batch**. For long books, including 1000+ chapter books, full automation is
-achieved by repeatedly starting fresh compact batches and re-querying CLI state
-after each batch.
+share the same effective batch size. The default is **5 chapters per
+coordinator/workflow batch**, and project `.env` can override it:
+
+```env
+DICH_TRUYEN_TRANSLATION_BATCH_SIZE=10
+```
+
+Runtime arguments, such as a workflow `max_chapters` override, take precedence
+over `.env`; `.env` takes precedence over the built-in default. Invalid values
+fail through `show-translation-settings` instead of silently falling back.
+
+For long books, including 1000+ chapter books, full automation is achieved by
+repeatedly starting fresh compact batches and re-querying CLI state after each
+batch.
 
 The main agent checks compact work-item state, then delegates batches to a
 coordinator where supported. The coordinator spawns one translator subagent per
@@ -408,3 +421,44 @@ The v2 contract is covered by tests for:
 - generated harness adapter sync and shared batch-size wording;
 - existing promotion blockers for conflicting glossary proposals and rejected
   aliases.
+
+### ADR-0002: Configurable Compact Batch Size
+
+- **Status:** Accepted
+- **Date:** 2026-06-12
+- **Architecture version:** v2.1
+
+#### Context
+
+The compact orchestration contract originally fixed the batch size at 5 for all
+harnesses. That default is safe for 1000+ chapter books, but some workspaces and
+models can tolerate larger batches, while constrained runs may need smaller
+batches.
+
+The repository already supports environment-based local configuration for
+export tooling, and `.env` is ignored by git. The batch-size setting should
+remain shared across harnesses rather than becoming adapter-specific.
+
+#### Decision
+
+Add `DICH_TRUYEN_TRANSLATION_BATCH_SIZE` as the shared translation batch-size
+setting. The effective value is resolved through `show-translation-settings
+--json`.
+
+Precedence is:
+
+1. explicit runtime argument, such as workflow `max_chapters`;
+2. `.env` or process environment;
+3. built-in default of 5.
+
+Invalid values, including `0`, negative numbers, and non-integers, fail clearly
+through the settings CLI.
+
+#### Consequences
+
+- All harnesses continue to share one compact orchestration contract.
+- Operators can tune long-book throughput locally without editing generated
+  adapters.
+- The default remains conservative for memory safety.
+- Translator isolation, sequential ordering, structural staging verification,
+  and promotion-bound glossary gates are unchanged.

@@ -22,7 +22,15 @@ Translate crawled and approved Chinese chapters sequentially with harness-native
 
 > [!IMPORTANT]
 > **Compact Long-Book Automation:**
-> Use the shared 5-chapter batch size for every harness. For 1000+ chapter books, repeat fresh compact batches until completion. Do not accumulate promoted chapter arrays, raw text, completed translation text, or verbose per-chapter logs in the Main Agent context.
+> Use the shared configurable batch size for every harness. The default is 5 chapters and can be overridden with `DICH_TRUYEN_TRANSLATION_BATCH_SIZE` in the project `.env` file. For 1000+ chapter books, repeat fresh compact batches until completion. Do not accumulate promoted chapter arrays, raw text, completed translation text, or verbose per-chapter logs in the Main Agent context.
+
+Effective translation settings are loaded with:
+```bash
+$env:PYTHONUTF8=1
+uv run python main.py show-translation-settings --json
+```
+
+Explicit runtime arguments override `.env`; `.env` overrides the built-in default of 5.
 
 ---
 
@@ -61,9 +69,17 @@ task(
 )
 ```
 
-OpenCode embeds the compact 5-chapter sequential loop in the `oc-translate-book` skill body and uses `task(` for each isolated chapter worker.
+OpenCode embeds the compact sequential loop in the `oc-translate-book` skill body, uses `show-translation-settings` for the effective `batch_size`, and uses `task(` for each isolated chapter worker.
 
-### Step 2: Run the Embedded Compact OpenCode Loop
+### Step 2: Load Effective Batch Size
+Fetch translation settings before entering the loop:
+```bash
+$env:PYTHONUTF8=1
+uv run python main.py show-translation-settings --json
+```
+Use `data.batch_size` unless the user supplied an explicit runtime override. The built-in default is 5.
+
+### Step 3: Run the Embedded Compact OpenCode Loop
 The Main Agent fetches the next deterministic work item:
 ```bash
 $env:PYTHONUTF8=1
@@ -73,10 +89,10 @@ uv run python main.py next-translation-work-item --workspace books/<book-slug> -
 * **If blocked:** Stop and report the gap to the user for repair.
 * **If pending:** Continue with the next pending chapter inside this OpenCode skill loop.
 
-### Step 3: Dispatch the Isolated OpenCode Worker
+### Step 4: Dispatch the Isolated OpenCode Worker
 Use the OpenCode `task(` dispatch shown above with `subagent_type="general"` and `oc-translator` instructions, passing the absolute paths reported by `next-translation-work-item`, including `glossary_context_path`.
 
-### Step 4: Lightweight Staging Verification
+### Step 5: Lightweight Staging Verification
 Run structural verification through the CLI:
 ```bash
 $env:PYTHONUTF8=1
@@ -84,13 +100,13 @@ uv run python main.py verify-staged-chapter --workspace books/<book-slug> --chap
 ```
 This does not replace glossary validation.
 
-### Step 5: Atomically Promote and Continue
+### Step 6: Atomically Promote and Continue
 Promote the chapter:
 ```bash
 $env:PYTHONUTF8=1
 uv run python main.py promote-chapter --workspace books/<book-slug> --chapter-id <chapter_id> --json
 ```
-If successful, loop back to Step 2 for the next pending chapter until the shared 5-chapter batch limit is reached.
+If successful, loop back to Step 3 for the next pending chapter until the effective `batch_size` limit is reached.
 If promotion is blocked by glossary consistency, retry the same chapter and include the `promote-chapter` reason in the translator prompt so the next attempt uses the existing glossary mapping and avoids rejected aliases.
 * **Retries:** Retry failures up to 3 times with polite backoffs before halting.
 * **Compact output:** Return only `{status, processed_count, chapter_start, chapter_end, next_chapter_id, failure_reason}`. Do not return cumulative chapter lists.

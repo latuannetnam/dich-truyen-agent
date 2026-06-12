@@ -49,6 +49,15 @@ $env:DICH_TRUYEN_EPUBCHECK_PATH = "$PWD\tools\epubcheck-5.3.0"
 $env:DICH_TRUYEN_CALIBRE_PATH = "C:\Program Files\Calibre2\ebook-convert.exe"
 ```
 
+Optional translation orchestration settings can be placed in project `.env`:
+
+```env
+DICH_TRUYEN_TRANSLATION_BATCH_SIZE=10
+```
+
+The default translation batch size is `5`. Explicit runtime arguments override
+`.env`; `.env` overrides the built-in default.
+
 Run tests:
 
 ```powershell

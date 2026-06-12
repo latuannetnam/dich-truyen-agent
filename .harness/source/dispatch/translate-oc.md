@@ -9,4 +9,4 @@ task(
 )
 ```
 
-OpenCode embeds the compact 5-chapter sequential loop in the `oc-translate-book` skill body and uses `task(` for each isolated chapter worker.
+OpenCode embeds the compact sequential loop in the `oc-translate-book` skill body, uses `show-translation-settings` for the effective `batch_size`, and uses `task(` for each isolated chapter worker.

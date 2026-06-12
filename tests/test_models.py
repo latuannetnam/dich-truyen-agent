@@ -13,6 +13,7 @@ from dich_truyen_agent.models import (
     OperationStatus,
     StageRecord,
     StageStatus,
+    TranslationSettings,
 )
 
 
@@ -69,6 +70,35 @@ def test_operation_result_is_compact() -> None:
         "data",
     }
     assert result.data == {}
+
+
+def test_translation_settings_default_batch_size() -> None:
+    settings = TranslationSettings(_env_file=None)
+    assert settings.batch_size == 5
+
+
+def test_translation_settings_reads_environment_batch_size(monkeypatch) -> None:
+    monkeypatch.setenv("DICH_TRUYEN_TRANSLATION_BATCH_SIZE", "12")
+
+    settings = TranslationSettings(_env_file=None)
+
+    assert settings.batch_size == 12
+
+
+def test_translation_settings_reads_dotenv_batch_size(tmp_path) -> None:
+    env_file = tmp_path / ".env"
+    env_file.write_text("DICH_TRUYEN_TRANSLATION_BATCH_SIZE=8\n", encoding="utf-8")
+
+    settings = TranslationSettings(_env_file=env_file)
+
+    assert settings.batch_size == 8
+
+
+def test_translation_settings_rejects_invalid_batch_size(monkeypatch) -> None:
+    monkeypatch.setenv("DICH_TRUYEN_TRANSLATION_BATCH_SIZE", "0")
+
+    with pytest.raises(ValidationError):
+        TranslationSettings(_env_file=None)
 
 
 def test_completed_stage_record_requires_hash_and_path() -> None:
