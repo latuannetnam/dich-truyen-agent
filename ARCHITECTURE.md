@@ -8,6 +8,33 @@ For setup and everyday usage, see [README.md](README.md).
 
 ---
 
+## Architecture Versioning
+
+This document describes **Translation Orchestration Architecture v2**.
+
+Architecture changes are versioned when they alter durable workspace contracts,
+CLI orchestration contracts, generated harness behavior, or recovery semantics.
+Documentation-only clarifications do not create a new architecture version.
+
+Current versions:
+
+- **v1 - gated sequential pipeline:** crawl approval, sequential translation,
+  per-chapter promotion, glossary consistency, QA approval, and export gates.
+- **v2 - compact shared orchestration:** all harnesses use a shared 5-chapter
+  batch contract, deterministic JSON CLI work items, structural staging
+  verification through the CLI, and compact coordinator summaries for 1000+
+  chapter books.
+
+Versioned changes must update:
+
+- `ARCHITECTURE.md`, including an ADR entry for the decision.
+- `.harness/source/**` when generated harness behavior changes.
+- Generated adapters via `tools/sync_harness_adapters.py`.
+- Tests that prove CLI contracts, generated adapter sync, and compatibility
+  with existing quality gates.
+
+---
+
 ## Workspace Structure
 
 A book workspace is managed under `books/<book-slug>/`:
@@ -77,19 +104,45 @@ uv run python main.py approve-crawl --workspace books/<book-slug>
 This creates `checkpoints/crawl-approved.yaml`. Translation is blocked until
 that checkpoint is valid.
 
-### 3. Prepare Translation Context
+### 3. Prepare Translation Work Item
 
-Before each chapter is translated, the coordinator calls:
+Before each chapter is translated, the coordinator calls the compact shared
+work-item command:
+
+```powershell
+$env:PYTHONUTF8=1
+uv run python main.py next-translation-work-item --workspace books/<book-slug> --json
+```
+
+This command combines progress discovery and translation context preparation
+into a deterministic JSON `OperationResult.data` payload. It enforces the crawl
+gate, detects completed workspaces, reports blocked state gaps, prepares the
+chapter glossary context, and returns absolute paths for the translator.
+
+The lower-level context command remains available:
 
 ```powershell
 $env:PYTHONUTF8=1
 uv run python main.py prepare-translation-context --workspace books/<book-slug> --chapter-id <chapter_id>
 ```
 
-This command enforces the crawl gate and strict sequential order. Chapter `N`
-cannot be prepared until every earlier chapter is promoted.
+Both commands enforce strict sequential order. Chapter `N` cannot be prepared
+until every earlier chapter is promoted.
 
-It returns compact paths for the translator subagent:
+The work-item payload returns compact orchestration data only:
+
+- `state`: `pending`, `completed`, `blocked`, or `error`.
+- `progress_completed` and `progress_total`.
+- `chapter_id`, `slug`, and `original_title` for pending work.
+- `raw_path`, `style_path`, `glossary_path`, `glossary_context_path`.
+- `prev_translation_path`, or `null` for chapter 1.
+- `staged_txt` and `staged_yaml`.
+- staging existence and fallback metadata.
+
+It must never include raw Chinese text, completed Vietnamese chapter bodies, or
+cumulative chapter lists.
+
+The translator subagent receives these paths:
 
 - `raw_path`: the raw Chinese chapter file.
 - `style_path`: the workspace style guide.
@@ -104,26 +157,57 @@ canonical names and avoid known bad variants.
 
 ### 4. Translate Sequentially With Isolated Subagents
 
-The active harness translate skill runs a bounded loop. The main agent checks
-progress, then delegates batches to a coordinator where supported. The
-coordinator spawns one translator subagent per chapter.
+The active harness translate skill runs a compact bounded loop. All harnesses
+share the same default batch size: **5 chapters per coordinator/workflow
+batch**. For long books, including 1000+ chapter books, full automation is
+achieved by repeatedly starting fresh compact batches and re-querying CLI state
+after each batch.
+
+The main agent checks compact work-item state, then delegates batches to a
+coordinator where supported. The coordinator spawns one translator subagent per
+chapter.
 
 The translator subagent is the only worker that reads raw Chinese chapter files.
-It reads only the paths supplied by `prepare-translation-context`, then writes:
+It reads only the paths supplied by `next-translation-work-item`, then writes:
 
 - `staging/chuong-NNNN-staged.txt`: Vietnamese draft.
 - `staging/chuong-NNNN-proposals.yaml`: optional new glossary proposals.
 
-The main agent and coordinator avoid bulk-reading raw or translated chapter
-contents to protect the context window.
+The main agent and coordinator avoid reading raw, staged, or translated chapter
+contents. Coordinators return only compact batch summaries:
+
+```json
+{
+  "status": "ok|completed|blocked|error",
+  "processed_count": 0,
+  "chapter_start": null,
+  "chapter_end": null,
+  "next_chapter_id": null,
+  "failure_reason": null
+}
+```
+
+This prevents main-agent context growth from cumulative per-chapter logs while
+preserving resumability through `state.yaml`.
 
 ### 5. Promote Chapter Output
 
-After staging, the coordinator runs:
+After staging, the coordinator first runs structural verification:
 
 ```powershell
 $env:PYTHONUTF8=1
-uv run python main.py promote-chapter --workspace books/<book-slug> --chapter-id <chapter_id>
+uv run python main.py verify-staged-chapter --workspace books/<book-slug> --chapter-id <chapter_id> --json
+```
+
+This verifies only the staged file shape, such as header format and required
+blank separator. It does not check glossary quality and does not replace
+promotion.
+
+Then the coordinator runs promotion:
+
+```powershell
+$env:PYTHONUTF8=1
+uv run python main.py promote-chapter --workspace books/<book-slug> --chapter-id <chapter_id> --json
 ```
 
 Promotion validates the staged text, checks glossary consistency, merges valid
@@ -187,6 +271,10 @@ result metadata under `reports/results/`, and keeps `state.yaml` as the source o
 truth for completed raw and translation stages. If translation stops, rerunning
 the harness translate skill resumes from the first pending chapter.
 
+For long books, the main agent must not remember which chapters were promoted
+across batches. It must call `next-translation-work-item` again and trust the
+workspace state.
+
 ---
 
 ## Glossary Lifecycle
@@ -224,6 +312,10 @@ for commands, bounded file reads, and subagent delegation.
   Claude-specific panel.
 - OpenCode duplicate-discovery protection is declared in `opencode.json`; only
   the `oc-*` pipeline skills remain active for OpenCode.
+- Translation orchestration is shared across harnesses through
+  `next-translation-work-item`, `verify-staged-chapter`, and JSON promotion
+  through `promote-chapter --json`; harness-specific code only controls native
+  subagent dispatch.
 
 Generated adapter locations:
 
@@ -251,3 +343,68 @@ uv run ruff check tools tests src main.py
 
 Generated files include a `GENERATED from .harness/source` header. If a generated
 file is stale, `tools/sync_harness_adapters.py --check` reports it.
+
+---
+
+## Architecture Decision Records
+
+### ADR-0001: Shared Compact Translation Orchestration
+
+- **Status:** Accepted
+- **Date:** 2026-06-12
+- **Architecture version:** v2
+
+#### Context
+
+The original translation loop delegated larger coordinator batches and required
+harness instructions to parse progress and context separately. That worked for
+short and medium books, but 1000+ chapter books risked main-agent context growth
+from repeated per-chapter summaries and long-running coordinator state.
+
+Codex exposed the pressure most clearly, but the underlying issue was not
+Codex-specific. The repository has a multi-harness architecture, so fixing only
+one adapter would create divergent behavior and harder recovery semantics.
+
+The glossary quality gate already lived in `promote-chapter`, where staged
+proposals and rejected aliases are checked before writing final translations.
+Any orchestration redesign needed to preserve that promotion-bound gate.
+
+#### Decision
+
+Use one shared compact orchestration contract for every harness:
+
+- Batch size is **5 chapters** for all harnesses.
+- `next-translation-work-item --json` is the canonical work discovery and
+  context path command.
+- `verify-staged-chapter --json` performs structural staged-output checks only.
+- `promote-chapter --json` remains mandatory after each staged chapter and
+  preserves the glossary consistency gate.
+- Coordinators return compact batch summaries only:
+  `{status, processed_count, chapter_start, chapter_end, next_chapter_id,
+  failure_reason}`.
+- The main agent re-queries CLI state after each batch instead of accumulating
+  promoted chapter arrays.
+
+#### Consequences
+
+- 1000+ chapter books can run through full automation using many fresh compact
+  batches while keeping each coordinator context bounded.
+- Main-agent memory growth is proportional to compact batch summaries, not raw
+  chapter contents or cumulative chapter lists.
+- Resume behavior remains deterministic because `state.yaml`, promoted file
+  hashes, and checkpoints remain the source of truth.
+- All harnesses share the same orchestration semantics; runtime-specific
+  adapters only differ in native subagent dispatch.
+- Promotion remains the only point that merges glossary proposals and writes
+  canonical translations, so per-chapter glossary quality is not weakened.
+
+#### Verification
+
+The v2 contract is covered by tests for:
+
+- compact pending/completed/blocked work-item payloads;
+- structural staged verification;
+- 1000+ chapter catalog compactness;
+- generated harness adapter sync and shared batch-size wording;
+- existing promotion blockers for conflicting glossary proposals and rejected
+  aliases.
