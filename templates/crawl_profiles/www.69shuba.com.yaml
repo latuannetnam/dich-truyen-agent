@@ -13,3 +13,36 @@ encoding:
   chapter: "gbk"
 validation:
   min_chapter_characters: 100
+browser:
+  enabled: true
+  strategy: noop
+  launch_args:
+    - "--disable-blink-features=AutomationControlled"
+  user_agent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+  viewport:
+    width: 1280
+    height: 800
+  init_scripts:
+    - "delete Object.getPrototypeOf(navigator).webdriver;"
+  challenge:
+    title_markers:
+      - "just a moment"
+      - "attention required"
+      - "正在验证"
+      - "安全验证"
+      - "验证浏览器"
+    max_wait_seconds: 15
+    poll_seconds: 1.0
+  session:
+    warmups:
+      - url_pattern: "https?://(?:www\\.)?69shuba\\.com/txt/(?P<book_id>\\d+)/\\d+"
+        warmup_url: "https://www.69shuba.com/book/{book_id}/"
+  navigation:
+    wait_until: domcontentloaded
+    timeout_milliseconds: 30000
+  actions:
+    - purpose: index
+      action: click
+      selector: ".catalog-all"
+      wait_for_selector: ".clist .u-chapter li a"
+      timeout_milliseconds: 10000

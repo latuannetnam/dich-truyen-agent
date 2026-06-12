@@ -171,3 +171,15 @@ def test_active_profile_rejects_unsupported_or_unmatched_urls(
 ) -> None:
     with pytest.raises(ValueError):
         load_active_crawl_profile(tmp_path, tmp_path / "book", source_url)
+
+
+def test_69shuba_profile_declares_browser_strategy() -> None:
+    profile = load_crawl_profile(Path("templates/crawl_profiles/www.69shuba.com.yaml"))
+
+    assert profile.browser.enabled is True
+    assert "--disable-blink-features=AutomationControlled" in profile.browser.launch_args
+    assert profile.browser.user_agent is not None
+    assert profile.browser.init_scripts
+    assert profile.browser.session.warmups
+    assert profile.browser.session.warmups[0].warmup_url == "https://www.69shuba.com/book/{book_id}/"
+    assert any(action.selector == ".catalog-all" for action in profile.browser.actions)
