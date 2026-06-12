@@ -132,7 +132,11 @@ async def crawl_book(
                 # Fallback to Playwright for index page
                 try:
                     fallback_renderer = renderer_instance or PlaywrightRenderer()
-                    html_content = await fallback_renderer.render(source_url)
+                    html_content = await fallback_renderer.render(
+                        source_url,
+                        profile_source.profile,
+                        purpose="index",
+                    )
                 except Exception as playwright_err:
                     await crawler.close()
                     return OperationResult(
@@ -147,7 +151,11 @@ async def crawl_book(
                 if "fallback_renderer" not in locals():
                     try:
                         fallback_renderer = renderer_instance or PlaywrightRenderer()
-                        html_content = await fallback_renderer.render(source_url)
+                        html_content = await fallback_renderer.render(
+                            source_url,
+                            profile_source.profile,
+                            purpose="index",
+                        )
                         discovered = discover_catalog(html_content, source_url, profile_source.profile)
                     except Exception:
                         pass
@@ -304,7 +312,11 @@ async def crawl_book(
                 attempts += 1
                 try:
                     if use_playwright:
-                        html_body = await renderer.render(tc.source_url)
+                        html_body = await renderer.render(
+                            tc.source_url,
+                            profile_source.profile,
+                            purpose="chapter",
+                        )
                         encoding_info = ("utf-8", "browser_render")
                     else:
                         raw_bytes, http_charset = await crawler.fetch(tc.source_url)

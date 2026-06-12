@@ -75,8 +75,8 @@ class FakeRenderer:
     def __init__(self) -> None:
         self.render_calls = []
 
-    async def render(self, url: str) -> str:
-        self.render_calls.append(url)
+    async def render(self, url: str, profile, *, purpose: str = "chapter") -> str:
+        self.render_calls.append((url, profile.domain, purpose))
         return "<h1>JS Title</h1><div id='content'>JS Content of chapter JS. This contains more than one hundred characters to bypass the character validation checks. Long text here... Long text here... Long text here... Long text here...</div>"
 
 
@@ -232,3 +232,65 @@ async def test_crawl_book_stop_on_gap_and_resume(
     assert res_resume.progress is not None
     assert res_resume.progress.completed == 3
     assert (paths.raw / "0003-title-3.txt").is_file()
+
+
+@pytest.mark.asyncio
+async def test_crawl_book_passes_profile_and_purpose_to_browser_fallback(
+    tmp_path: Path, clean_project: Path
+) -> None:
+    books_root = tmp_path / "books"
+    slug = "browser-profile-book"
+
+    async def no_sleep(seconds: float) -> None:
+        del seconds
+
+    class AntiBotIndexCrawler:
+        def __init__(self, settings: CrawlSettings):
+            self.settings = settings
+
+        async def fetch(self, url: str) -> tuple[bytes, str | None]:
+            if "index" in url:
+                return b"<html><body>Cloudflare protection</body></html>", "utf-8"
+            html = "<h1>Title 1</h1><div id='content'>Content of chapter 1. This contains more than one hundred characters to bypass the character validation checks. Long text here... Long text here... Long text here... Long text here...</div>"
+            return html.encode("gbk"), "gbk"
+
+        async def close(self) -> None:
+            pass
+
+    class IndexRenderer:
+        def __init__(self) -> None:
+            self.render_calls = []
+
+        async def render(self, url: str, profile, *, purpose: str = "chapter") -> str:
+            self.render_calls.append((url, profile.domain, purpose))
+            return """
+            <html>
+              <head><title>My Book</title></head>
+              <body>
+                <div class="centent">
+                  <ul><li><a href="c1.html">第一章 Title 1</a></li></ul>
+                </div>
+              </body>
+            </html>
+            """
+
+        async def close(self) -> None:
+            pass
+
+    renderer = IndexRenderer()
+    res = await crawl_book(
+        books_root=books_root,
+        book_slug=slug,
+        source_url="https://www.piaotia.com/html/8/8717/index.html",
+        project_root=clean_project,
+        max_chapters=1,
+        chapter_delay_seconds=0,
+        sleeper_fn=no_sleep,
+        static_crawler_class=AntiBotIndexCrawler,
+        renderer_instance=renderer,
+    )
+
+    assert res.status is OperationStatus.OK
+    assert renderer.render_calls == [
+        ("https://www.piaotia.com/html/8/8717/index.html", "www.piaotia.com", "index")
+    ]
