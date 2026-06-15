@@ -12,7 +12,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class PersistedModel(BaseModel):
-    model_config = ConfigDict(extra="forbid", validate_assignment=True)
+    model_config = ConfigDict(extra="forbid", validate_assignment=True, populate_by_name=True)
 
 
 class BookMetadata(PersistedModel):
@@ -112,6 +112,10 @@ class TranslationStyle(PersistedModel):
     vocabulary: dict[str, str] = Field(default_factory=dict)
     tone: str
     examples: list[str | dict[str, str]] = Field(default_factory=list)
+    genre_register: str = Field(default="", alias="register")
+    emotion_guidelines: list[str] = Field(default_factory=list)
+    voice_guidelines: list[str] = Field(default_factory=list)
+    rhythm_guidelines: list[str] = Field(default_factory=list)
 
 
 class CrawlSettings(BaseSettings):
