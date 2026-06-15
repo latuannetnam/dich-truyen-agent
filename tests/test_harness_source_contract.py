@@ -114,3 +114,19 @@ def test_crawl_skill_describes_profile_driven_browser_settings() -> None:
     assert "browser:" in text
     assert "named browser strategy" in text
     assert "Do not hardcode site-specific browser behavior in `browser.py`" in text
+
+
+def test_translator_prompt_has_emotional_craft_and_no_ascii_rule() -> None:
+    text = (SOURCE / "agents" / "translator.md").read_text(encoding="utf-8")
+    # New craft guidance present
+    assert "Emotional fidelity" in text
+    assert "Prose rhythm" in text
+    assert "dialogue voice" in text.lower()
+    # Register is generalized, no longer hardcoded archaic-only
+    assert "register" in text.lower()
+    # The harmful ASCII replacement table is gone
+    assert "Lexical Sandbox" not in text
+    assert "diacritic" in text.lower()
+    # Isolation contract preserved
+    assert "external LLM" in text
+    assert "single chapter" in text.lower() or "Single chapter" in text

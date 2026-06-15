@@ -36,36 +36,33 @@ Scan the first 500 characters of the raw source for scrambling, anti-scraping pa
 - **Joiner:** Single space between `Chuong <N>` and the title body. No colon, no hyphen, no brackets around the chapter number.
 
 ### Step 4 - Translate the body
-- Produce natural, high-quality literary Vietnamese prose.
-- Apply genre guidelines and vocabulary rules from `style_path`.
-- Apply glossary mappings from `glossary_path` (these override your own choices).
-- Apply every relevant mapping from `glossary_context_path` exactly. These mappings are the chapter-specific consistency gate and override your own choices.
-- Never use any value listed under `rejected_aliases` in `glossary_context_path`.
+Produce natural, high-quality literary Vietnamese prose that a Vietnamese reader would experience as written by a human author, not machine-translated.
+
+**Register (genre tone).** Maintain the `register` and `tone` defined in `style.yaml`. Modern genres (e.g. apocalypse, urban) must use natural modern Vietnamese; never force archaic wuxia phrasing (`tại hạ`, `bần đạo`, `cáo từ`) onto a modern scene. Archaic genres keep their classical register.
+
+**Apply the style craft fields** from `style.yaml`: `emotion_guidelines`, `voice_guidelines`, and `rhythm_guidelines`. These are mandatory, alongside the universal craft below.
+
+**Universal craft (apply to every chapter):**
+
+- **Emotional fidelity:** translate the character's *felt experience* - fear, panic, sarcasm, tenderness, exhaustion - not just the literal words. Choose verbs and adjectives that carry the emotional charge.
+- **Prose rhythm:** vary sentence length and cadence to match pacing. Action and tension use short, clipped, urgent sentences; reflection and scenery use longer, flowing sentences. Never let every sentence have the same length and rhythm.
+- **Natural dialogue voice:** render speech the way a Vietnamese speaker would actually say it. Give characters distinct voices; convey stutter, banter, bluster, or hesitation with natural Vietnamese devices (word choice, fragments, particles) - never by stripping diacritics.
+- **Show, don't report:** prefer concrete, embodied, sensory phrasing over flat narration.
+
+**Consistency rules (these override your own choices):**
+
+- Apply glossary mappings from `glossary_path`.
+- Apply every relevant mapping from `glossary_context_path` exactly. Never use any value listed under `rejected_aliases`.
 - Match the pronoun style of `prev_translation_path` for continuity.
-- Maintain the `archaic` tone defined in `style.yaml`.
 
-### Step 5 - Lexical Sandbox Rule (mandatory programmatic scan)
-Before writing the file, scan your draft for leaked English helper words and replace them.
+### Step 5 - No leaked English, full Vietnamese diacritics (mandatory scan)
 
-| Banned English Word | Vietnamese Equivalent | Notes |
-| :--- | :--- | :--- |
-| but | nhung | |
-| and | va | |
-| or | hoac | |
-| while | trong khi | |
-| before | truoc khi | |
-| after | sau khi | |
-| of | cua | |
-| to | den / cho | depends on context |
-| in | trong | |
-| on | tren | |
-| at | tai | |
-| for | cho / vi | depends on context |
-| with | voi | |
-| the | omit article | Vietnamese has no articles |
-| here | day | |
-| now | bay gio | |
-| okay | duoc / OK | |
+Before writing the file, scan your draft for two defects and fix them:
+
+1. **No leaked English helper words.** If any English word (the, and, but, of, with, here, now, okay, etc.) appears in the prose, replace it with the correct Vietnamese word in context.
+2. **Full diacritics.** All Vietnamese MUST be written with correct, complete tone marks and diacritics (e.g. `Ngươi là người phương nào?`, never `Ngoi la nguoi phuong nao`). Do NOT strip diacritics under any circumstance.
+
+The ONLY exception is when the raw text portrays a character whose speech is genuinely slurred or broken. In that case, render the distortion deliberately and naturally in Vietnamese as an authorial choice - do not produce diacritic-stripped ASCII as a side effect.
 
 ### Step 6 - No Chinese residue in the body
 The translated body MUST consist solely of Vietnamese prose. NEVER include raw Chinese characters, bilingual annotations, or translator notes inside the staging translation file. All Chinese term proposals are isolated to the proposals YAML file.
@@ -89,10 +86,15 @@ If you encountered new Chinese names / factions / items / cultivation terms NOT 
 If there are zero proposals, **do not** create the file.
 
 ### Step 9 - Self-review
+
 Re-read `staged_txt` for a head check and confirm:
+
 - Line 1 matches `# [title_vi]` exactly.
 - No raw Chinese characters anywhere in the body.
-- No banned English helper words anywhere in the body.
+- No leaked English helper words anywhere in the body.
+- All Vietnamese is fully accented with correct diacritics (no ASCII-only words, except deliberate slurred-speech rendering).
+- The register matches `style.yaml` (no archaic phrasing in a modern-genre book, and vice versa).
+- Emotion and prose rhythm were applied: action reads urgent, quiet scenes read measured; sentences vary in length.
 - No rejected glossary aliases from `glossary_context_path` anywhere in the body.
 - File is not empty; character count looks proportional to the raw source.
 
