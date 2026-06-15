@@ -109,8 +109,16 @@ validation:
 """
     (profile_dir / "www.piaotia.com.yaml").write_text(profile_content, encoding="utf-8")
 
-    # Write dummy style template
-    style_content = """
+    # Write dummy style templates (general is the default; tien_hiep kept for profile-name tests)
+    general_style = """
+name: "general"
+description: "General template"
+guidelines: []
+vocabulary: {}
+tone: "natural"
+examples: []
+"""
+    tien_hiep_style = """
 name: "tien_hiep"
 description: "Tien Hiep template"
 guidelines: ["Use Vietnamese Sino-Vietnamese translations"]
@@ -118,7 +126,8 @@ vocabulary: {}
 tone: "classical"
 examples: []
 """
-    (style_dir / "tien_hiep.yaml").write_text(style_content, encoding="utf-8")
+    (style_dir / "general.yaml").write_text(general_style, encoding="utf-8")
+    (style_dir / "tien_hiep.yaml").write_text(tien_hiep_style, encoding="utf-8")
 
     return project_root
 
