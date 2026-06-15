@@ -142,6 +142,18 @@ def test_do_thi_profile_is_valid() -> None:
     assert style.rhythm_guidelines
 
 
+def test_tien_hiep_profile_has_register_and_craft() -> None:
+    style = load_style(Path.cwd() / "templates" / "styles" / "tien_hiep.yaml")
+    assert style.name == "tien_hiep"
+    assert style.genre_register
+    assert style.emotion_guidelines
+    assert style.voice_guidelines
+    assert style.rhythm_guidelines
+    # existing archaic content preserved
+    assert style.tone == "archaic"
+    assert "修炼" in style.vocabulary
+
+
 def test_snapshot_isolated_from_template_changes(tmp_path: Path) -> None:
     project_root = tmp_path / "project"
     template = project_root / "templates" / "styles" / "general.yaml"
