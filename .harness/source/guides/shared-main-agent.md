@@ -39,7 +39,7 @@ Before running `init-book`, infer the book's genre from its title and source met
 | Apocalypse / survival (mạt thế) | `mat_the` | Zombie, doomsday, post-collapse survival novels |
 | Modern urban | `do_thi` | Contemporary city life, office romance, modern drama |
 | Xianxia / cultivation | `tien_hiep` | Martial arts, immortal cultivation, wuxia |
-| Anything else / unsure | `general` | Neutral fallback — never silently archaic |
+| Anything else / unsure | `general` | Genre not listed above, or unclear — default if omitted |
 
 **Recommendation flow:**
 
@@ -53,7 +53,7 @@ $env:PYTHONUTF8=1
 uv run python main.py init-book --slug <book-slug> --title "<title>" --source-url "<source-url>" --style mat_the
 ```
 
-Do **not** silently default to `tien_hiep` for modern novels. The wrong genre register produces archaic phrasing in contemporary scenes.
+`--style` is optional; it defaults to `general` if omitted. Do **not** omit it for genre-specific novels — use the table above to pick the right profile. Applying `tien_hiep` to a modern novel produces archaic phrasing in contemporary scenes.
 
 ## Token & Context Protection
 
