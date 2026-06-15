@@ -118,6 +118,14 @@ def test_style_resolution_raises_for_unknown_profile(tmp_path: Path) -> None:
         load_selected_style(tmp_path, Path("does_not_exist"))
 
 
+def test_bundled_general_profile_is_valid() -> None:
+    style = load_selected_style(Path.cwd())
+    assert style.name == "general"
+    assert style.genre_register
+    assert style.emotion_guidelines
+    assert style.rhythm_guidelines
+
+
 def test_snapshot_isolated_from_template_changes(tmp_path: Path) -> None:
     project_root = tmp_path / "project"
     template = project_root / "templates" / "styles" / "general.yaml"

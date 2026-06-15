@@ -1,0 +1,34 @@
+name: general
+description: >-
+  Phong cách dịch văn học phổ thông, tự nhiên, giàu cảm xúc, không gắn
+  với một thể loại cụ thể; ưu tiên văn tiếng Việt mượt mà, đúng giọng nhân vật.
+register: trung tính, văn học tự nhiên
+guidelines:
+- >-
+  Ưu tiên câu văn tiếng Việt tự nhiên như người Việt thật sự viết, tránh dịch sát
+  từng chữ theo cấu trúc Hán văn.
+- Giữ nguyên nghĩa và sắc thái của bản gốc, không lược bỏ cảm xúc hay chi tiết.
+- Dùng "hắn"/"nàng" hoặc đại từ phù hợp ngữ cảnh, nhất quán với chương trước.
+vocabulary: {}
+tone: natural
+emotion_guidelines:
+- >-
+  Dịch trải nghiệm cảm xúc của nhân vật (sợ hãi, vui mừng, mỉa mai, xúc động), không
+  chỉ dịch nghĩa đen của câu chữ.
+- Chọn động từ và tính từ mang sức nặng cảm xúc thay vì từ trung tính, nhạt nhòa.
+- Thể hiện cảm xúc qua hành động và chi tiết cụ thể (cho thấy, không kể lể).
+voice_guidelines:
+- Lời thoại phải nghe như lời nói thật của người Việt, tự nhiên và đúng hoàn cảnh.
+- >-
+  Mỗi nhân vật có giọng riêng; giữ nét tinh nghịch, do dự, nóng nảy bằng phương tiện
+  tiếng Việt tự nhiên.
+rhythm_guidelines:
+- >-
+  Thay đổi độ dài câu theo nhịp cảnh: câu ngắn, dồn dập trong cảnh hành động; câu dài,
+  uyển chuyển trong cảnh suy tư hay tả cảnh.
+- Tránh để mọi câu cùng độ dài và cùng nhịp điệu đơn điệu.
+examples:
+- chinese: 他猛地回头，心脏狂跳。
+  vietnamese: Hắn giật phắt đầu lại, tim đập như trống dồn.
+- chinese: 她轻轻叹了口气，望着窗外的雨。
+  vietnamese: Nàng khẽ thở dài, lặng nhìn màn mưa ngoài cửa sổ.
