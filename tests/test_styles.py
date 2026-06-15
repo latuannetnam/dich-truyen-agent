@@ -9,9 +9,42 @@ from dich_truyen_agent.storage import load_yaml_model
 from dich_truyen_agent.styles import load_selected_style, load_style, snapshot_style
 
 
+def _write_profile(project_root: Path, name: str) -> None:
+    template = project_root / "templates" / "styles" / f"{name}.yaml"
+    template.parent.mkdir(parents=True, exist_ok=True)
+    template.write_text(
+        f"name: {name}\ndescription: {name}\nguidelines: []\n"
+        "vocabulary: {}\ntone: neutral\nexamples: []\n",
+        encoding="utf-8",
+    )
+
+
 def test_default_style_loads_from_bundled_template() -> None:
     style = load_selected_style(Path.cwd())
-    assert style.name == "tien_hiep"
+    assert style.name == "general"
+
+
+def test_default_style_is_general(tmp_path: Path) -> None:
+    _write_profile(tmp_path, "general")
+    style = load_selected_style(tmp_path)
+    assert style.name == "general"
+
+
+def test_style_resolves_bare_profile_name(tmp_path: Path) -> None:
+    _write_profile(tmp_path, "mat_the")
+    style = load_selected_style(tmp_path, Path("mat_the"))
+    assert style.name == "mat_the"
+
+
+def test_style_resolves_explicit_existing_path(tmp_path: Path) -> None:
+    source = tmp_path / "custom.yaml"
+    source.write_text(
+        "name: custom\ndescription: c\nguidelines: []\n"
+        "vocabulary: {}\ntone: neutral\nexamples: []\n",
+        encoding="utf-8",
+    )
+    style = load_selected_style(tmp_path, source)
+    assert style.name == "custom"
 
 
 def test_custom_style_snapshots_atomically(tmp_path: Path) -> None:
@@ -80,9 +113,14 @@ def test_style_loads_with_craft_fields(tmp_path: Path) -> None:
     assert style.rhythm_guidelines == ["Cau ngan trong canh hanh dong"]
 
 
+def test_style_resolution_raises_for_unknown_profile(tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match="unknown style profile"):
+        load_selected_style(tmp_path, Path("does_not_exist"))
+
+
 def test_snapshot_isolated_from_template_changes(tmp_path: Path) -> None:
     project_root = tmp_path / "project"
-    template = project_root / "templates" / "styles" / "tien_hiep.yaml"
+    template = project_root / "templates" / "styles" / "general.yaml"
     template.parent.mkdir(parents=True)
     template.write_text(
         "name: initial\ndescription: Initial\nguidelines: []\n"
