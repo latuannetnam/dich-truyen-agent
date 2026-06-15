@@ -10,7 +10,7 @@ For setup and everyday usage, see [README.md](README.md).
 
 ## Architecture Versioning
 
-This document describes **Translation Orchestration Architecture v2.1**.
+This document describes **Translation Orchestration Architecture v2.2**.
 
 Architecture changes are versioned when they alter durable workspace contracts,
 CLI orchestration contracts, generated harness behavior, or recovery semantics.
@@ -27,6 +27,12 @@ Current versions:
 - **v2.1 - configurable compact batch size:** the compact orchestration batch
   size defaults to 5 but can be configured from project `.env` with
   `DICH_TRUYEN_TRANSLATION_BATCH_SIZE`.
+- **v2.2 - genre-aware style profiles + emotional craft:** the translation
+  style system is extended with genre-specific profiles and universal emotional
+  craft guidance. `init-book` now accepts `--style <profile-name>` and defaults
+  to `general` instead of `tien_hiep`. The translator prompt is rewritten to
+  require emotional fidelity, prose rhythm, and natural dialogue voice, and the
+  harmful ASCII diacritic-stripping rule is removed.
 
 Versioned changes must update:
 
@@ -80,15 +86,22 @@ the selected style, and initializes empty chapter and state records:
 
 ```powershell
 $env:PYTHONUTF8=1
-uv run python main.py init-book --slug <book-slug> --title "<title>" --source-url "<source-url>"
+uv run python main.py init-book --slug <book-slug> --title "<title>" --source-url "<source-url>" --style <profile-name>
 ```
+
+The `--style` flag accepts either a bare profile name (`general`, `tien_hiep`,
+`mat_the`, `do_thi`) or an explicit path to a custom YAML file. It defaults to
+`general` when omitted. The agent infers the book's genre before initialization
+and recommends the most appropriate profile; the user confirms or overrides
+before `init-book` runs. See the shared main-agent guide for the recommendation
+flow.
 
 Important outputs:
 
 - `book.yaml`: source URL, original title, author, and translated metadata.
 - `chapters.yaml`: chapter catalog once crawling discovers chapters.
 - `state.yaml`: per-chapter raw and translation stage status.
-- `style.yaml`: local style guide copied into the workspace.
+- `style.yaml`: local style guide snapshot copied into the workspace.
 
 ### 2. Crawl Raw Chinese Chapters
 
@@ -290,6 +303,77 @@ workspace state.
 
 ---
 
+## Translation Style System
+
+Translation quality is controlled through two independent layers that are set at
+init time and remain fixed for the lifetime of the workspace.
+
+### Layer 1 — Register (per-genre)
+
+The `style.yaml` workspace snapshot carries a genre-specific **register**: the
+tonal dialect for the book (archaic-formal, modern-colloquial, etc.). The
+translator subagent reads this from `style_path` and applies it throughout the
+chapter.
+
+Bundled genre profiles live in `templates/styles/`:
+
+| Profile name | File | Genre |
+| --- | --- | --- |
+| `general` | `general.yaml` | Neutral fallback — used when genre is unclear |
+| `mat_the` | `mat_the.yaml` | Modern apocalypse / zombie survival |
+| `do_thi` | `do_thi.yaml` | Modern urban / contemporary city life |
+| `tien_hiep` | `tien_hiep.yaml` | Xianxia / cultivation / wuxia |
+
+Each profile declares:
+
+- `name`, `description`, `tone` — identity fields.
+- `guidelines` — prose-level rules specific to this genre.
+- `vocabulary` — Chinese-to-Vietnamese term overrides.
+- `examples` — sample passages showing expected output.
+- `register` — tonal register label (e.g. `hiện đại, đời thường, căng thẳng sinh tồn`).
+- `emotion_guidelines`, `voice_guidelines`, `rhythm_guidelines` — craft rules
+  for emotion, character voice, and sentence rhythm that the translator must
+  apply.
+
+Custom profiles can be provided at any path and passed to `--style` as an
+explicit file path.
+
+`TranslationStyle` in `models.py` is the Pydantic model for these files. All
+craft fields are optional with empty defaults, so workspace snapshots from
+before v2.2 still load without errors.
+
+### Layer 2 — Craft (universal)
+
+The translator prompt (`.harness/source/agents/translator.md`) carries universal
+craft rules that apply to every book regardless of genre:
+
+- **Emotional fidelity:** convey each character's felt experience using verbs
+  and adjectives that carry emotional charge; do not flatten to neutral narration.
+- **Prose rhythm:** vary sentence length and cadence — short clipped sentences
+  in action, longer flowing sentences in reflection; avoid uniform cadence.
+- **Natural dialogue voice:** render speech as a Vietnamese speaker would
+  naturally say it; give characters distinct voices.
+- **Show, don't report:** prefer concrete, sensory phrasing over flat
+  descriptive narration.
+
+The prompt also mandates a self-review step that checks diacritics, register
+match, and craft application before the chapter is written to the staging file.
+No ASCII diacritic stripping is performed; all Vietnamese output must carry full
+diacritics.
+
+### Style resolution
+
+`src/dich_truyen_agent/styles.py` exposes `resolve_style_path()` with three modes:
+
+1. `--style` omitted → `templates/styles/general.yaml`.
+2. `--style <bare-name>` → `templates/styles/<bare-name>.yaml`.
+3. `--style <path>` where the path exists → used as-is.
+
+An unrecognized bare name raises a `ValueError` with a clear message rather than
+silently producing a missing-file path.
+
+---
+
 ## Glossary Lifecycle
 
 After crawl approval, the agent initializes and evolves `glossary.yaml` as
@@ -462,3 +546,87 @@ through the settings CLI.
 - The default remains conservative for memory safety.
 - Translator isolation, sequential ordering, structural staging verification,
   and promotion-bound glossary gates are unchanged.
+
+### ADR-0003: Genre-Aware Style Profiles and Emotional Craft
+
+- **Status:** Accepted
+- **Date:** 2026-06-15
+- **Architecture version:** v2.2
+
+#### Context
+
+Translation output for `mo-ri-zhang-lang` (a modern zombie-survival novel) was
+machine-like: characters' fear, panic, and banter did not come through, and
+sentence rhythm was uniform regardless of scene pacing. Review identified two
+root causes:
+
+1. The translator prompt contained no guidance on emotional fidelity, prose
+   rhythm, or character voice — it optimized for "professional, elegant, archaic"
+   correctness only.
+2. The style system had a single profile (`tien_hiep.yaml`), hardcoded as the
+   default for every book. A zombie-apocalypse novel was being translated in
+   archaic xianxia register, producing phrases like `"tại hạ xin cáo từ"` and
+   `"thiên linh cái"` mid zombie-chase.
+
+A secondary defect in the translator prompt — a "Lexical Sandbox Rule" with an
+ASCII replacement table — was stripping Vietnamese diacritics and producing
+output like `"Ngoi... la... ngoi... phuong... nao...?"` instead of fully
+accented Vietnamese.
+
+#### Decision
+
+Separate **craft** (universal, every book) from **register** (per-genre,
+per-book):
+
+**Craft layer (translator prompt):** Rewrite Steps 4–5 and the self-review
+checklist in `.harness/source/agents/translator.md` to mandate:
+
+- Emotional fidelity — translate the character's felt experience, not just the
+  literal words.
+- Prose rhythm — vary sentence length and cadence to match scene pacing.
+- Natural dialogue voice — render speech as a Vietnamese speaker would say it.
+- Show, don't report — prefer concrete, sensory phrasing.
+- Remove the ASCII diacritic-stripping rule; require fully-accented Vietnamese
+  in all output.
+
+**Register layer (style profiles):** Extend `TranslationStyle` with optional
+fields `register`, `emotion_guidelines`, `voice_guidelines`, and
+`rhythm_guidelines`. Provide four bundled profiles in `templates/styles/`:
+`general` (neutral fallback), `mat_the` (apocalypse/survival), `do_thi`
+(modern urban), and enrich `tien_hiep` with the new craft fields.
+
+**Init flow:** Change the `--style` default from `tien_hiep` to `general`.
+Add bare-profile-name resolution to `resolve_style_path()`. Document a
+genre-recommendation step in the shared main-agent guide so the agent infers
+genre and proposes a profile before `init-book` runs.
+
+#### Consequences
+
+- Future translations for any genre receive both correct register and explicit
+  emotional-craft guidance.
+- The wrong-register problem is eliminated for new books; existing workspace
+  snapshots still load because all new `TranslationStyle` fields are optional
+  with empty defaults.
+- The diacritic-stripping defect is gone; the self-review checklist now verifies
+  full diacritics explicitly.
+- The `general` default prevents any book from silently receiving archaic
+  xianxia styling.
+- Translator isolation, sequential ordering, staging, promotion, and glossary
+  gates are unchanged.
+- A second "literary editor" refine pass was considered (Approach C) and
+  rejected: it would double per-chapter cost, break the single-subagent-per-
+  chapter contract, and add non-deterministic context coupling between passes.
+
+#### Verification
+
+- `TranslationStyle` loads with and without the new fields (backward compat).
+- Each bundled profile passes `validate-style`.
+- `load_selected_style` resolves bare profile names, explicit paths, and the
+  `general` default.
+- Translator prompt assertions: `"Emotional fidelity"`, `"Prose rhythm"`,
+  `"dialogue voice"`, `"register"` present; `"Lexical Sandbox"` absent;
+  `"diacritic"` present.
+- Genre-recommendation section in shared guide: `"--style"`, `"genre"`,
+  `"mat_the"`, `"recommend"` present.
+- Generated adapters verified in sync via `sync_harness_adapters.py --check`.
+- Full test suite: 311 passed, 1 skipped.
