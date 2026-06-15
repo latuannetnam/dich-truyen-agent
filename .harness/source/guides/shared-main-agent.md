@@ -30,6 +30,31 @@ uv run python main.py init-book --slug <book-slug> --title "<title>" --source-ur
 
 When retrieving metadata from source sites, prefer terminal-driven HTTP requests with browser-like headers and explicit source encoding such as `gbk` or `utf-8`.
 
+### Genre Profile Selection
+
+Before running `init-book`, infer the book's genre from its title and source metadata, then select the most appropriate style profile:
+
+| Genre | `--style` flag | When to use |
+| --- | --- | --- |
+| Apocalypse / survival (mạt thế) | `mat_the` | Zombie, doomsday, post-collapse survival novels |
+| Modern urban | `do_thi` | Contemporary city life, office romance, modern drama |
+| Xianxia / cultivation | `tien_hiep` | Martial arts, immortal cultivation, wuxia |
+| Anything else / unsure | `general` | Neutral fallback — never silently archaic |
+
+**Recommendation flow:**
+
+1. Read the book title and any available synopsis or chapter 1 excerpt.
+2. Recommend a `--style` value to the user and explain why.
+3. Wait for the user to confirm or override.
+4. Then run `init-book` with the confirmed `--style`:
+
+```powershell
+$env:PYTHONUTF8=1
+uv run python main.py init-book --slug <book-slug> --title "<title>" --source-url "<source-url>" --style mat_the
+```
+
+Do **not** silently default to `tien_hiep` for modern novels. The wrong genre register produces archaic phrasing in contemporary scenes.
+
 ## Token & Context Protection
 
 Never read raw source Chinese files or completed Vietnamese chapters into your own Main Agent session. Reading raw files quickly overwhelms the context window.

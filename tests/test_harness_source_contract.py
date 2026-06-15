@@ -130,3 +130,11 @@ def test_translator_prompt_has_emotional_craft_and_no_ascii_rule() -> None:
     # Isolation contract preserved
     assert "external LLM" in text
     assert "single chapter" in text.lower() or "Single chapter" in text
+
+
+def test_setup_guide_describes_genre_profile_recommendation() -> None:
+    text = (SOURCE / "guides" / "shared-main-agent.md").read_text(encoding="utf-8")
+    assert "--style" in text
+    assert "genre" in text.lower()
+    assert "mat_the" in text
+    assert "recommend" in text.lower()
