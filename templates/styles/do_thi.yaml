@@ -1,0 +1,33 @@
+name: do_thi
+description: >-
+  Phong cách dịch tiểu thuyết đô thị hiện đại (đời sống thành thị, công sở,
+  tình cảm). Giọng văn hiện đại, tự nhiên, gần gũi; không dùng ngôn ngữ cổ trang.
+register: hiện đại, thành thị, tự nhiên
+guidelines:
+- Dùng ngôn ngữ hiện đại đời thường, tự nhiên như văn đô thị Việt; tránh từ cổ trang.
+- Giữ danh từ hiện đại (điện thoại, công ty, quán cà phê) đúng nghĩa, không Hán hóa.
+- Lời thoại theo lối nói chuyện hằng ngày, có sắc thái xã giao phù hợp quan hệ nhân vật.
+- Dùng đại từ hiện đại ("anh", "cô", "tôi", "cậu") nhất quán với chương trước.
+vocabulary:
+  公司: công ty
+  手机: điện thoại
+  老板: ông chủ
+  同事: đồng nghiệp
+tone: modern-natural
+emotion_guidelines:
+- >-
+  Truyền tải cảm xúc tinh tế (ngại ngùng, ghen tị, ấm áp, bực dọc) qua giọng văn
+  đời thường.
+- Dùng từ ngữ gợi cảm xúc thật, tránh diễn đạt sáo rỗng, máy móc.
+- Cho thấy tâm trạng qua hành vi nhỏ và chi tiết sinh hoạt, không kể lể.
+voice_guidelines:
+- Lời thoại tự nhiên, đúng vai vế và quan hệ (sếp–nhân viên, bạn bè, người yêu).
+- Mỗi nhân vật một giọng riêng; giữ nét hóm hỉnh hay lạnh lùng bằng tiếng Việt đời thường.
+rhythm_guidelines:
+- Đối thoại nhịp nhanh, gọn; đoạn miêu tả nội tâm nhịp chậm hơn, mềm mại.
+- Tránh để mọi câu cùng độ dài; tạo nhịp điệu theo mạch cảm xúc của cảnh.
+examples:
+- chinese: 她端起咖啡，淡淡地说：我们分手吧。
+  vietnamese: Cô nâng tách cà phê lên, nhẹ giọng nói với anh rằng hai người nên chia tay.
+- chinese: 他盯着手机屏幕，迟迟没有回复。
+  vietnamese: Anh dán mắt vào màn hình điện thoại, mãi vẫn chưa nhắn lại.
