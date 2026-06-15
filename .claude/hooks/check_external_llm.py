@@ -102,12 +102,14 @@ def main():
         # Skip files inside .claude/hooks/ and .agents/hooks/ — those are guardrail
         # scripts which legitimately contain the banned constants and would otherwise
         # self-trigger when invoked for testing.
+        # Also skip test files (test_*.py) which may reference banned constants for validation.
         py_files = re.findall(r"[\w\-./\\]+\.py\b", command_line)
         for py_file in py_files:
             normalized = py_file.replace("\\", "/").lower()
             if "/.claude/hooks/" in normalized or "/.agents/hooks/" in normalized \
                     or normalized.startswith(".claude/hooks/") \
-                    or normalized.startswith(".agents/hooks/"):
+                    or normalized.startswith(".agents/hooks/") \
+                    or "/tests/" in normalized or normalized.startswith("tests/"):
                 continue
             file_path = Path(cwd) / py_file
             try:
