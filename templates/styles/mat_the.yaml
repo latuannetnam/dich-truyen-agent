@@ -1,0 +1,36 @@
+name: mat_the
+description: >-
+  Phong cách dịch tiểu thuyết mạt thế, sinh tồn hiện đại (tận thế, thây ma,
+  tai biến). Giọng văn hiện đại, đời thường, căng thẳng, KHÔNG dùng ngôn ngữ cổ trang.
+register: hiện đại, đời thường, căng thẳng sinh tồn
+guidelines:
+- >-
+  Dùng ngôn ngữ hiện đại đời thường; TUYỆT ĐỐI tránh từ cổ trang/tiên hiệp như "tại
+  hạ", "bần đạo", "thiên linh cái", "cáo từ".
+- Lời thoại theo cách nói thật của con người hiện đại đang hoảng loạn hoặc gấp gáp.
+- Giữ thuật ngữ hiện đại (xe bán tải, ba lô, bình tông) đúng tự nhiên, không Hán hóa.
+- Dùng "hắn"/"cô"/"gã"/"nàng" theo ngữ cảnh, nhất quán với chương trước.
+vocabulary:
+  丧尸: tang thi
+  末世: mạt thế
+  幸存者: kẻ sống sót
+  避难所: nơi trú ẩn
+  变异: biến dị
+tone: modern-tense
+emotion_guidelines:
+- >-
+  Truyền tải nỗi sợ, sự hoảng loạn, kiệt sức và bản năng sinh tồn của nhân vật một
+  cách trần trụi, sống động.
+- Chọn động từ mạnh, cụ thể (lao, giật, đập, gào) để cảnh hành động thực sự gấp gáp.
+- Thể hiện cảm xúc qua phản ứng cơ thể và chi tiết giác quan, không kể lể chung chung.
+voice_guidelines:
+- Lời thoại lúc nguy cấp nên ngắn, gấp, có thể vụn vỡ; phản ánh cảm xúc tức thời.
+- Mỗi nhân vật một giọng; giữ nét hài, cộc cằn, ngây ngô bằng tiếng Việt đời thường.
+rhythm_guidelines:
+- Cảnh chiến đấu/chạy trốn dùng câu ngắn, dồn dập, ngắt nhịp nhanh để tăng độ căng.
+- Cảnh nghỉ, hồi tưởng dùng câu dài hơn, chậm lại; tạo tương phản nhịp điệu rõ rệt.
+examples:
+- chinese: "他猛地拉开车门，嘶吼道：还愣着干什么，快开车！"
+  vietnamese: "Hắn giật phắt cửa xe, gào lên: \"Còn đứng đó làm gì, mau lái xe đi!\""
+- chinese: 丧尸越来越近，他的心脏几乎要跳出胸口。
+  vietnamese: Lũ thây ma mỗi lúc một gần, tim hắn như chực nhảy khỏi lồng ngực.

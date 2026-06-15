@@ -126,6 +126,14 @@ def test_bundled_general_profile_is_valid() -> None:
     assert style.rhythm_guidelines
 
 
+def test_mat_the_profile_is_valid_and_modern() -> None:
+    style = load_style(Path.cwd() / "templates" / "styles" / "mat_the.yaml")
+    assert style.name == "mat_the"
+    assert "hiện đại" in style.genre_register or "modern" in style.genre_register
+    assert style.emotion_guidelines
+    assert style.rhythm_guidelines
+
+
 def test_snapshot_isolated_from_template_changes(tmp_path: Path) -> None:
     project_root = tmp_path / "project"
     template = project_root / "templates" / "styles" / "general.yaml"
