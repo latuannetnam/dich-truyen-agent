@@ -29,5 +29,7 @@ def test_no_cowork_adapter_tree_generated():
         ROOT / ".agent" / "skills",
         ROOT / ".codex" / "skills",
     ]:
+        if not folder.exists():
+            continue
         for child in folder.iterdir():
             assert not child.name.startswith("cw-"), child
