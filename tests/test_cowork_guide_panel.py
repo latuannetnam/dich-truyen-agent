@@ -33,3 +33,12 @@ def test_no_cowork_adapter_tree_generated():
             continue
         for child in folder.iterdir():
             assert not child.name.startswith("cw-"), child
+
+
+def test_generated_cc_translate_skill_has_cowork_fallback():
+    skill = ROOT / ".claude" / "skills" / "cc-translate-book" / "SKILL.md"
+    assert skill.is_file(), f"Missing {skill}"
+    text = skill.read_text(encoding="utf-8")
+    assert "Cowork Fallback Dispatch" in text
+    assert "general-purpose" in text
+    assert ".claude/agents/cc_translator.md" in text
