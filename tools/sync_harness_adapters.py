@@ -238,18 +238,26 @@ def render_guides(manifest: dict) -> list[RenderedFile]:
         read_text(SOURCE / "guides" / "panels" / f"{harness}.md").rstrip()
         for harness in manifest["harnesses"]
     ]
+    profile_panels = [
+        read_text(SOURCE / "guides" / "panels" / f"{profile}.md").rstrip()
+        for profile in manifest.get("guide_profiles", [])
+    ]
     agents = (
         generated_header(manifest)
         + shared
         + "\n\n## Harness Capability Matrix\n\n"
-        + "\n\n".join(panels)
+        + "\n\n".join(panels + profile_panels)
         + "\n"
     )
+    claude_sections = [
+        read_text(SOURCE / "guides" / "panels" / "cc.md").rstrip(),
+        *profile_panels,
+    ]
     claude = (
         generated_header(manifest)
         + shared
         + "\n\n## Claude Code Capability Panel\n\n"
-        + read_text(SOURCE / "guides" / "panels" / "cc.md").rstrip()
+        + "\n\n".join(claude_sections)
         + "\n"
     )
     return [
