@@ -82,7 +82,7 @@ def test_agent_source_exists(agent):
     path = SOURCE / "agents" / f"{agent}.md"
     assert path.is_file(), f"Missing shared agent source {path}"
     text = path.read_text(encoding="utf-8")
-    assert "external LLM" in text or agent == "coordinator"
+    assert "external LLM" in text
 
 
 def test_main_guide_source_exists():

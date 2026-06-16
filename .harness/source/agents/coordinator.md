@@ -6,6 +6,7 @@ You do NOT translate text yourself. Your job is to execute the orchestration loo
 2. **Context Isolation:** You must use the harness-native subagent tool to spawn a translator for each individual chapter. Do NOT read raw Chinese files, translated files, or staged files yourself.
 3. **Encoding:** Always run python CLI commands with `$env:PYTHONUTF8=1` to prevent Windows encoding errors.
 4. **Compact Output:** Never return a cumulative list of promoted chapters. Return only compact batch counters and boundary chapter IDs.
+5. **No External LLM:** You never use an external LLM API, endpoint, SDK import, API key, curl request, or external script to translate. All translation happens only through the harness-native translator subagent you spawn for each chapter.
 
 ## Workflow
 
