@@ -10,7 +10,7 @@ For setup and everyday usage, see [README.md](README.md).
 
 ## Architecture Versioning
 
-This document describes **Translation Orchestration Architecture v2.3**.
+This document describes **Translation Orchestration Architecture v2.4**.
 
 Architecture changes are versioned when they alter durable workspace contracts,
 CLI orchestration contracts, generated harness behavior, or recovery semantics.
@@ -33,6 +33,11 @@ Current versions:
   to `general` instead of `tien_hiep`. The translator prompt is rewritten to
   require emotional fidelity, prose rhythm, and natural dialogue voice, and the
   harmful ASCII diacritic-stripping rule is removed.
+- **v2.4 - Cowork general-agent dispatch:** Cowork cannot dispatch the custom
+  `cc_*` subagents, so the `cc-translate-book` skill carries a Cowork fallback that
+  runs the compact loop in the Main Agent and dispatches a built-in
+  `general-purpose` worker per chapter (mirroring OpenCode). The Cowork CLI form
+  uses an isolated ephemeral venv. See ADR-0005.
 - **v2.3 - Claude Cowork compatibility profile:** Cowork is treated as a
   Claude-Code-compatible runtime that reuses the generated `cc-*` adapters
   rather than a separate adapter tree. A `guide_profiles` manifest key renders a
@@ -644,7 +649,7 @@ genre and proposes a profile before `init-book` runs.
 
 ### ADR-0004: Claude Cowork Compatibility Profile
 
-- **Status:** Accepted
+- **Status:** Accepted; delegation assumption superseded by ADR-0005
 - **Date:** 2026-06-16
 - **Architecture version:** v2.3
 
@@ -699,4 +704,58 @@ equivalent to `opencode.json`.
   with the documented markers.
 - `AGENTS.md` and `CLAUDE.md` both contain the Cowork panel; no `cw-*` skill or
   `cw_*` agent files are generated.
+- `tools/sync_harness_adapters.py --check` reports a clean tree.
+
+### ADR-0005: Cowork General-Agent Dispatch
+
+- **Status:** Accepted
+- **Date:** 2026-06-16
+- **Architecture version:** v2.4
+- **Supersedes:** ADR-0004 delegation assumption
+
+#### Context
+
+ADR-0004 assumed Cowork inherits Claude Code's `Agent` dispatch and could run the
+`cc_coordinator` -> `cc_translator` delegation chain, pending a small-book
+verification. Real-world Cowork testing disproved this: Cowork's `Agent` tool
+exposes only **built-in** agents, so project-defined `cc_*` subagents are not
+dispatchable. Testing also showed `uv run python main.py` fails in Cowork's Linux
+sandbox because the committed `.venv` is a Windows virtualenv; the working form is
+`UV_CACHE_DIR=/tmp/uv-cache uv run --isolated --python 3.13 main.py ...`.
+
+#### Decision
+
+Reuse the OpenCode dispatch shape for Cowork without adding a `cw-*` adapter tree:
+
+- Add a **Cowork Fallback Dispatch** block to `.harness/source/dispatch/translate-cc.md`
+  (and therefore to the generated `cc-translate-book` skill). Under Cowork the Main
+  Agent runs the compact per-chapter loop itself (no Coordinator tier) and
+  dispatches a built-in `general-purpose` agent per chapter, instructing it to read
+  and follow `.claude/agents/cc_translator.md`; metadata uses
+  `.claude/agents/cc_metadata_translator.md`.
+- Document the isolated-venv CLI form and the no-custom-subagent reality in the
+  Cowork capability panel (`cw.md`).
+
+The guide-only Cowork profile from ADR-0004 is retained — no `cw-*` skills or
+agents are generated. Only the cc dispatch text and the Cowork panel change.
+
+#### Consequences
+
+- Cowork can run the full translation loop using a built-in worker, with token
+  protection intact: the Main Agent never reads raw chapters; only the dispatched
+  general worker does.
+- The Cowork path has no coordinator tier, matching OpenCode. Large-book batching
+  is driven by the Main Agent loop in the skill body.
+- Claude Code proper is unchanged: it still uses the `cc_coordinator` /
+  `cc_translator` path; the fallback block is explicitly Cowork-scoped.
+- The Cowork CLI form differs from Windows; the panel documents both.
+
+#### Verification
+
+- `.harness/source/dispatch/translate-cc.md` contains the `Cowork Fallback Dispatch`
+  block with `general-purpose`, `cc_translator.md`, `uv run --isolated`, and
+  `no separate subagent tier`.
+- The generated `.claude/skills/cc-translate-book/SKILL.md` contains the fallback.
+- The `cw` panel documents the isolated-venv CLI, the not-dispatchable reality, and
+  the general-agent dispatch.
 - `tools/sync_harness_adapters.py --check` reports a clean tree.
