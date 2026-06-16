@@ -10,7 +10,7 @@ For setup and everyday usage, see [README.md](README.md).
 
 ## Architecture Versioning
 
-This document describes **Translation Orchestration Architecture v2.2**.
+This document describes **Translation Orchestration Architecture v2.3**.
 
 Architecture changes are versioned when they alter durable workspace contracts,
 CLI orchestration contracts, generated harness behavior, or recovery semantics.
@@ -33,6 +33,11 @@ Current versions:
   to `general` instead of `tien_hiep`. The translator prompt is rewritten to
   require emotional fidelity, prose rhythm, and natural dialogue voice, and the
   harmful ASCII diacritic-stripping rule is removed.
+- **v2.3 - Claude Cowork compatibility profile:** Cowork is treated as a
+  Claude-Code-compatible runtime that reuses the generated `cc-*` adapters
+  rather than a separate adapter tree. A `guide_profiles` manifest key renders a
+  Cowork capability panel into `AGENTS.md` and `CLAUDE.md`, and the external-LLM
+  guardrail is enforced at instruction level because Cowork does not fire hooks.
 
 Versioned changes must update:
 
@@ -407,6 +412,12 @@ for commands, bounded file reads, and subagent delegation.
 - Root guide files are generated from shared main-agent logic:
   `AGENTS.md` contains the cross-harness guide and `CLAUDE.md` contains the
   Claude-specific panel.
+- Claude Cowork reuses the generated `cc-*` skills and `cc_*` agents because it
+  is built on Claude Code and reads the same `.claude/` adapters. It is declared
+  as a `guide_profiles` entry (`cw`) so the sync tool renders a Cowork capability
+  panel into `AGENTS.md` and `CLAUDE.md` without generating a duplicate `cw-*`
+  adapter tree. Because Cowork does not fire hooks, the external-LLM guardrail is
+  carried in skill/agent instruction text.
 - OpenCode duplicate-discovery protection is declared in `opencode.json`; only
   the `oc-*` pipeline skills remain active for OpenCode.
 - Translation orchestration is shared across harnesses through
@@ -630,3 +641,62 @@ genre and proposes a profile before `init-book` runs.
   `"mat_the"`, `"recommend"` present.
 - Generated adapters verified in sync via `sync_harness_adapters.py --check`.
 - Full test suite: 311 passed, 1 skipped.
+
+### ADR-0004: Claude Cowork Compatibility Profile
+
+- **Status:** Accepted
+- **Date:** 2026-06-16
+- **Architecture version:** v2.3
+
+#### Context
+
+Claude Cowork is Anthropic's autonomous desktop agent. It is built on Claude
+Code, shares the plugin model, and reads the same `.claude/` adapters. Two of its
+properties matter here: it executes Bash CLI commands (so `main.py` orchestration
+works), but it does **not** fire Claude Code hooks, so the `check_external_llm.py`
+guardrail hook is inert under Cowork. Whether a skill body can dispatch a subagent
+in Cowork is officially undocumented, though Cowork inherits Claude Code's `Agent`
+dispatch.
+
+#### Decision
+
+Support Cowork as a Claude-Code-compatible profile that reuses the generated
+`cc-*` adapters instead of generating a separate `cw-*` adapter tree:
+
+- Add an explicit external-LLM prohibition rule to the shared coordinator agent
+  so the guardrail holds at instruction level across the whole delegation chain
+  when hooks do not fire. The other workers (translator, metadata-translator) and
+  the `translate-book` skill already carry this text.
+- Introduce a `guide_profiles` manifest key. The sync tool renders each profile
+  panel into `AGENTS.md` and `CLAUDE.md` but does **not** generate skills or
+  agents for it.
+- Add a Cowork capability panel that points users at the `cc-*` skills and
+  documents the hooks gap and the subagent-dispatch verification step.
+
+A full `cw-*` adapter set was rejected: Cowork reads `.claude/`, not a `.cowork/`
+directory, so a separate tree would be ignored, and placing `cw-*` files into
+`.claude/` would cause duplicate skill discovery with `cc-*` in both Claude Code
+and Cowork — which Cowork cannot suppress because it has no hooks/config
+equivalent to `opencode.json`.
+
+#### Consequences
+
+- Cowork runs the pipeline through the existing `cc-*` adapters with no duplicate
+  discovery and no divergent adapter tree to maintain.
+- The external-LLM guardrail is now enforced at instruction level for every
+  harness, hardening behavior beyond hook-based blocking.
+- Large-book support in Cowork depends on subagent dispatch, which is
+  undocumented; the panel instructs users to verify dispatch on a small book
+  first. No code path assumes Cowork-specific dispatch behavior.
+- Translator isolation, sequential ordering, staging, promotion, and glossary
+  gates are unchanged.
+
+#### Verification
+
+- The coordinator agent source and generated coordinator adapters contain the
+  external-LLM prohibition.
+- The manifest declares `guide_profiles: ["cw"]` and the `cw` panel source exists
+  with the documented markers.
+- `AGENTS.md` and `CLAUDE.md` both contain the Cowork panel; no `cw-*` skill or
+  `cw_*` agent files are generated.
+- `tools/sync_harness_adapters.py --check` reports a clean tree.

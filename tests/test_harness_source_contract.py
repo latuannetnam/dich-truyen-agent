@@ -158,3 +158,11 @@ def test_cowork_panel_source_exists():
         "verify subagent dispatch",
     ]:
         assert marker in text, f"Missing marker {marker!r} in cw panel"
+
+
+def test_architecture_documents_cowork_support():
+    text = (ROOT / "ARCHITECTURE.md").read_text(encoding="utf-8")
+    assert "ADR-0004" in text
+    assert "Cowork" in text
+    assert "v2.3" in text
+    assert "guide_profiles" in text
