@@ -138,3 +138,23 @@ def test_setup_guide_describes_genre_profile_recommendation() -> None:
     assert "genre" in text.lower()
     assert "mat_the" in text
     assert "recommend" in text.lower()
+
+
+def test_manifest_declares_cowork_guide_profile():
+    manifest = read_json(SOURCE / "manifest.json")
+    assert manifest.get("guide_profiles") == ["cw"]
+
+
+def test_cowork_panel_source_exists():
+    path = SOURCE / "guides" / "panels" / "cw.md"
+    assert path.is_file(), f"Missing Cowork panel {path}"
+    text = path.read_text(encoding="utf-8")
+    for marker in [
+        "Cowork",
+        "built on Claude Code",
+        "cc-translate-book",
+        "hooks do not fire",
+        "instruction level",
+        "verify subagent dispatch",
+    ]:
+        assert marker in text, f"Missing marker {marker!r} in cw panel"
