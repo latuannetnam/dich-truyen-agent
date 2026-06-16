@@ -61,7 +61,7 @@ def main():
                         return
 
         allow()
-    except Exception as e:
+    except Exception:
         allow()
 
 def allow():
