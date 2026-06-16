@@ -155,14 +155,29 @@ def test_cowork_panel_source_exists():
         "cc-translate-book",
         "hooks do not fire",
         "instruction level",
-        "verify subagent dispatch",
+        "uv run --isolated",
+        "not dispatchable",
+        "general agent",
+        "cc_translator.md",
+        "general-agent dispatch",
     ]:
         assert marker in text, f"Missing marker {marker!r} in cw panel"
+
+
+def test_cc_dispatch_documents_cowork_fallback():
+    text = (SOURCE / "dispatch" / "translate-cc.md").read_text(encoding="utf-8")
+    assert "Cowork Fallback Dispatch" in text
+    assert "general-purpose" in text
+    assert "cc_translator.md" in text
+    assert "uv run --isolated" in text
+    assert "no separate subagent tier" in text
 
 
 def test_architecture_documents_cowork_support():
     text = (ROOT / "ARCHITECTURE.md").read_text(encoding="utf-8")
     assert "ADR-0004" in text
+    assert "ADR-0005" in text
     assert "Cowork" in text
-    assert "v2.3" in text
+    assert "v2.4" in text
     assert "guide_profiles" in text
+    assert "general-purpose" in text
