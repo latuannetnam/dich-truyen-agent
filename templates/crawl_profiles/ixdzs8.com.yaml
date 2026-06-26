@@ -1,0 +1,62 @@
+schema_version: 1
+domain: "ixdzs8.com"
+index:
+  chapter_link_selector: ".clist .u-chapter li a"
+  pagination_selector: null
+  list_section_selectors:
+    - ".clist"
+chapter:
+  title_selector: ".page-d-name, .page-content h3, h1"
+  content_selector: ".page-content section, .page-content .text"
+  remove_selectors:
+    - "script"
+    - "style"
+    - ".ad"
+    - ".advertisement"
+    - "#footer"
+    - ".page-nav"
+    - ".chapter-nav"
+    - ".page-d-top"
+    - "h3"
+encoding:
+  index: "utf-8"
+  chapter: "utf-8"
+validation:
+  min_chapter_characters: 100
+browser:
+  enabled: true
+  strategy: null
+  launch_args:
+    - "--disable-blink-features=AutomationControlled"
+    - "--disable-dev-shm-usage"
+    - "--no-sandbox"
+  user_agent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+  viewport:
+    width: 1280
+    height: 800
+  init_scripts:
+    - "delete Object.getPrototypeOf(navigator).webdriver;"
+  challenge:
+    title_markers:
+      - "正在验证浏览器"
+      - "just a moment"
+      - "attention required"
+      - "checking your browser"
+    max_wait_seconds: 30
+    poll_seconds: 2.0
+  session:
+    warmups:
+      - url_pattern: "https?://ixdzs8\\.com/read/(?P<book_id>\\d+)/p\\d+\\.html"
+        warmup_url: "https://ixdzs8.com/read/{book_id}/"
+  navigation:
+    wait_until: "domcontentloaded"
+    timeout_milliseconds: 60000
+  index:
+    wait_for_response_url_contains:
+      - "/novel/clist/"
+  actions:
+    - purpose: "index"
+      action: "click"
+      selector: ".catalog-all"
+      wait_for_selector: ".clist .u-chapter li a"
+      timeout_milliseconds: 15000
