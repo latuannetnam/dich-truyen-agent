@@ -18,24 +18,24 @@ The first implementation supports one workspace and one active orchestrator proc
 | Component | Owns | Does not own |
 | --- | --- | --- |
 | Workspace domain operations | `state.yaml`, `book.yaml`, `chapters.yaml`, reports, approvals, promoted chapters, export artifacts | Agent process lifecycle |
-| LangGraph | Phase routing, approval interrupts, retry accounting, run identity, pause/resume cursor | Authoritative chapter or gate status |
+| LangGraph | Phase routing, approval interrupts, run identity, pause/resume cursor, and bounded translation batch checkpoints | Authoritative chapter or gate status |
 | Harness runner | Starting and stopping one CLI process, capturing its output, reporting exit/timeout | Deciding that a chapter or gate passed |
-| Antigravity agent | Diagnosing crawl failures and proposing a workspace-local profile repair, metadata translation, and exactly one compact translation batch per invocation | Routine HTTP crawling, approving gates, or running the entire book in one session |
+| Antigravity agent | Diagnosing crawl failures and proposing a workspace-local profile repair, translating metadata, or translating exactly one chapter into staging per invocation | Routine HTTP crawling, choosing chapters, promoting translations, approving gates, or running a batch loop |
 
 At every phase boundary and after every harness exit, derive chapter progress and gate validity again from workspace domain operations. Graph counters are snapshots for display only. `check-gate` and the hash-backed evidence determine whether an approval is current. Extend new crawl approval evidence to include `chapters.yaml`, and new QA approval evidence to include `chapters.yaml` and `state.yaml`; the existing approval commands do not hash these files today. Do not include mutable `state.yaml` in crawl evidence, because chapter promotion changes it. Reject older approvals missing the required catalog evidence for an orchestrated full-book run and guide the operator to regenerate them. `next-translation-work-item` determines whether translation is pending, completed, or blocked. A `blocked` result, a chapter gap, or stale evidence stops execution; it is never treated as a transient process failure.
 
-Each translation invocation has a hard upper bound of `batch_size` newly promoted chapters. A fresh Antigravity process receives a prompt for **one coordinator and one batch only**, then exits. The current `$ag-translate-book` skill describes a whole-book outer loop, so the implementation must add a documented one-batch dispatch contract or adjust the generated shared harness source and adapters before invoking that skill from the orchestrator. An unconstrained `$ag-translate-book` prompt is not a valid batch call.
+The orchestrator owns the compact sequential translation loop. One fresh Antigravity process runs the native `ag_translator` for **one chapter only** and writes only staged text and optional glossary proposals; `batch_size` limits the number of chapters the graph processes before a checkpoint and progress summary, not the number translated in one agent process. The current `$ag-translate-book` skill and `ag_coordinator` describe a different, agent-owned loop. Do not invoke either from the orchestrator. During implementation, amend `.harness/source/guides/shared-main-agent.md` and regenerate adapters to document the orchestrator-specific direct-translator path while preserving the coordinator workflow for interactive harness use. The translator instructions remain sourced from `.harness/source/agents/translator.md`, not copied into an ad hoc prompt.
 
 ## 3. Antigravity capability gate
 
 Before implementing `AgyRunner`, run a small, non-destructive capability check on the target installation and record its results in the implementation plan:
 
-1. Locate the executable and capture its version/help. Verify the actual non-interactive prompt syntax, output mode, timeout options, permission behavior, and exit codes. The previously proposed `agy -p ... --dangerously-skip-permissions --print-timeout ...` command is **unverified** and must not be hard-coded from this spec.
-2. Confirm that a fresh CLI session discovers project `.agent/skills/ag-*` adapters, can repair a crawl profile candidate in a bounded session, and can dispatch `ag_coordinator`, which in turn dispatches `ag_translator`. If nested translation dispatch is unavailable, design an explicit native-harness fallback that still isolates each chapter; do not use an external LLM API.
+1. Locate the executable and capture its version/help. Verify the actual non-interactive prompt syntax, direct custom-agent selection, output mode, timeout options, permission behavior, and exit codes. Google documents `agy models` and session-level `--model`, but the exact command and direct `ag_translator` support on the target installation still need a smoke test. Do not hard-code the previously proposed `agy -p ... --dangerously-skip-permissions --print-timeout ...` command from this spec.
+2. Confirm that a fresh CLI session discovers the project `ag_translator` and `ag_metadata_translator` definitions, can invoke the translator directly for exactly one chapter with its configured model, can write only the designated staging outputs, and can run a bounded profile-repair task. Confirm the translator's effective model when the CLI exposes it; do not infer subagent model inheritance from `model: inherit`. If direct custom-agent dispatch is unavailable, fail the translation capability gate and revise the design explicitly before implementation; do not silently restore a coordinator loop or use an external LLM API.
 3. Confirm what machine-readable events the CLI exposes. If it only provides text, logging may stream text, but tool calls and agent thoughts must not be claimed as structured events.
 4. Prove that timeout or cancellation ends the entire child process tree on Windows. Confirm `stdout` and `stderr` can be drained without blocking and that a quiet, still-running process is not mistaken for a hang.
 
-If this gate fails, stop before a run that could require agent work and report the missing capability. A QA-only or export-only run uses deterministic operations and does not require `agy` to be installed. A crawl run with pending crawl work checks the capability because automatic profile repair may need the agent; translation checks it before an agent batch or metadata task. A run whose selected endpoint is already satisfied needs no harness. The runner launches an argument vector with `shell=False`, sets `PYTHONUTF8=1`, uses the project root as `cwd`, and resolves the workspace to an absolute path. Any permission bypass is an explicit operator option, limited to the intended workspace and recorded in the run summary; it is not the default.
+If this gate fails, stop before a run that could require agent work and report the missing capability. A QA-only or export-only run uses deterministic operations and does not require `agy` to be installed. A crawl run with pending crawl work checks the capability because automatic profile repair may need the agent; translation checks it before a chapter or metadata task. A run whose selected endpoint is already satisfied needs no harness. The runner launches an argument vector with `shell=False`, sets `PYTHONUTF8=1`, uses the project root as `cwd`, and resolves the workspace to an absolute path. Any permission bypass is an explicit operator option, limited to the intended workspace and recorded in the run summary; it is not the default.
 
 ## 4. Architecture and interfaces
 
@@ -55,7 +55,7 @@ src/dich_truyen_agent/orchestrator/
         mock.py           # controlled tests
 ```
 
-`WorkspaceOps` reuses the existing deterministic crawler, crawl reporting/approval, `check_gate`, `next_translation_work_item`, QA, QA approval, and export. The orchestrator invokes `crawl-book` as a supervised Python subprocess, not through an agent. Add a JSON result mode to that CLI command so `WorkspaceOps` can parse its `OperationResult` even when the process exits with code 0. The process supervisor applies the same Windows process-tree timeout handling to deterministic crawl and harness calls. Where approval logic currently lives inside `cli.py`, move that logic into a small domain function and leave the CLI as a thin wrapper. The orchestrator must not duplicate approval criteria. Every operation returns a typed `OperationResult`; `status`, report data, and current gate checks determine the route. The current CLI prints `blocked`/`error` without a nonzero process exit code, so exit code alone is insufficient.
+`WorkspaceOps` reuses the existing deterministic crawler, crawl reporting/approval, `check_gate`, `next_translation_work_item`, staged-chapter verification, glossary validation/promotion, QA, QA approval, and export. The orchestrator invokes `crawl-book` as a supervised Python subprocess, not through an agent. Add a JSON result mode to that CLI command so `WorkspaceOps` can parse its `OperationResult` even when the process exits with code 0. The process supervisor applies the same Windows process-tree timeout handling to deterministic crawl and harness calls. Where approval logic currently lives inside `cli.py`, move that logic into a small domain function and leave the CLI as a thin wrapper. The orchestrator must not duplicate domain criteria. Every operation returns a typed `OperationResult`; `status`, report data, and current gate checks determine the route. The current CLI prints `blocked`/`error` without a nonzero process exit code, so exit code alone is insufficient.
 
 ```python
 class HarnessRunner(Protocol):
@@ -65,6 +65,7 @@ class HarnessRunner(Protocol):
         phase: Phase,
         workspace: Path,
         prompt: str,
+        model: str | None,
         timeout_seconds: int,
         on_event: Callable[[RunEvent], None],
     ) -> HarnessRunResult: ...
@@ -74,7 +75,9 @@ class HarnessRunner(Protocol):
 # It does not claim domain success.
 ```
 
-The runner receives prompts only for profile repair, metadata translation, and one translation batch. QA and export use deterministic workspace operations rather than skills that also approve or have different format defaults. Metadata translation, if `translated_title` or a present author translation is missing, is a separate bounded harness invocation before the first batch; it uses the existing native metadata translator and persists through `update-book-metadata`.
+The runner receives prompts only for profile repair, metadata translation, and one chapter translation. QA and export use deterministic workspace operations rather than skills that also approve or have different format defaults. Metadata translation, if `translated_title` or a present author translation is missing, is a separate bounded harness invocation before the first chapter; it uses the existing native metadata translator and persists through `update-book-metadata`.
+
+`--agy-model <slug>` selects the default model for every agent invocation in this run. `--agy-translation-model <slug>` overrides it for chapter translation only; if both are omitted, the CLI's configured default applies. Pass a selected slug as a distinct `--model` argv element, never by shell interpolation or by editing user/global Antigravity settings. Validate explicitly selected slugs against the target installation's `agy models` output before the first relevant invocation; an unavailable slug blocks the run without fallback. Persist the requested model per phase and the model reported by the CLI when available; label an unreported effective model as unknown. Explicit selections are pinned in the run config and reused on `--resume`; an unpinned CLI default may change outside the run and must be shown as such in the run summary. Neither option changes an existing translated chapter or starts an agent for a phase that is already complete.
 
 ## 5. Graph state and execution
 
@@ -85,12 +88,13 @@ class BookOrchestratorState(TypedDict):
     workspace: str                 # absolute canonical path
     run_id: str                    # UUID; also the LangGraph thread_id
     harness: str
-    config: dict                   # validated batch, timeout, format, approval settings
+    config: dict                   # validated batch, timeout, format, approval, model settings
     start_at: str                  # auto, crawl, translate, qa, export
     stop_after: str                # crawl, translate, qa, export
     phase: str
     batch_index: int
-    consecutive_batch_failures: int
+    current_chapter_id: int | None
+    chapter_attempt: int           # display snapshot; durable attempts live in run journal
     profile_repair_attempts: int
     pending_approval: str | None   # crawl or qa
     approval_report_hash: str | None
@@ -100,7 +104,7 @@ class BookOrchestratorState(TypedDict):
     run_dir: str
 ```
 
-Do not checkpoint raw source text, chapter translations, full report bodies, per-chapter arrays, or verbose logs. Display counters are computed from workspace state at the time of rendering. Store the SQLite file under the workspace run metadata directory, and store the current `run_id` in a small run manifest. `orchestrate --resume` resolves that ID and uses the same LangGraph `thread_id`; it retains the run's `start_at` and `stop_after`. A new invocation after a terminal `blocked` or `completed` run gets a new ID and reconciles the workspace. While a run is paused, a plain new invocation reports the pending resume; an explicit `--start-at` creates a new run, marks the old one `superseded` in its summary, and prevents later resumption of that thread. A workspace lock prevents simultaneous writers; release it when the CLI exits in `paused` state and reacquire it on resume or a new run.
+Do not checkpoint raw source text, chapter translations, full report bodies, per-chapter arrays, or verbose logs. Display counters are computed from workspace state at the time of rendering. Store the SQLite file under the workspace run metadata directory, and store the current `run_id` in a small run manifest. A compact, atomically written per-run attempt journal records chapter ID and attempts *before* each agent launch so a crash cannot reset the retry budget. `orchestrate --resume` resolves that ID and uses the same LangGraph `thread_id`; it retains the run's `start_at`, `stop_after`, and explicit model selections. A new invocation after a terminal `blocked` or `completed` run gets a new ID and reconciles the workspace. While a run is paused, a plain new invocation reports the pending resume; an explicit `--start-at` creates a new run, marks the old one `superseded` in its summary, and prevents later resumption of that thread. A workspace lock prevents simultaneous writers; release it when the CLI exits in `paused` state and reacquire it on resume or a new run.
 
 ### 5.1 Phase entry and bounded runs
 
@@ -113,7 +117,7 @@ Do not checkpoint raw source text, chapter translations, full report bodies, per
 | `qa` | Current full crawl checkpoint and complete, gap-free translations | Current `qa-approved` checkpoint after QA/approval; an existing current QA gate may be reused |
 | `export` | Current full crawl checkpoint, complete translations, and current `qa-approved` checkpoint | Every requested format verified in `exports/` |
 
-Translation has durable per-chapter promotions in `state.yaml` and translation files, but no separate `translation-completed` approval checkpoint today. The QA entry check therefore verifies all catalog chapters and the `next-translation-work-item` completion result; it must not treat a numeric count alone as proof. The QA checkpoint can be partial when a human accepted warnings, matching the current export gate behavior; automatic QA approval still requires zero findings. Gate checks must validate current hashes and the strengthened evidence requirements in Section 2. Checking prerequisites does not run their phases.
+Translation has durable per-chapter promotions in `state.yaml` and translation files, but no separate `translation-completed` approval checkpoint today. The QA entry check therefore validates the catalog/state pairing and hashes of all completed translation artifacts through `inspect_workspace`, then requires `next-translation-work-item` to return `completed`; it must not treat a numeric count alone as proof. The QA checkpoint can be partial when a human accepted warnings, matching the current export gate behavior; automatic QA approval still requires zero findings. Gate checks must validate current hashes and the strengthened evidence requirements in Section 2. Checking prerequisites does not run their phases.
 
 An explicit `--start-at qa` with a current QA gate and `--stop-after qa` is a successful no-op. An explicit `--start-at export` runs export using existing approvals without re-running crawl, translation, or QA. An explicit `--start-at translate` begins at the first pending chapter without opening a crawl subprocess. These new runs use new graph thread IDs even if an earlier orchestrator run never existed; a valid workspace is sufficient.
 
@@ -142,12 +146,15 @@ flowchart TD
     ApproveCrawl -->|stop after crawl| Done
     ApproveCrawl --> Metadata
     Metadata --> NextItem[requery next work item]
-    NextItem -->|pending| Batch[run exactly one batch]
+    NextItem -->|pending| Chapter[run one isolated translator for one chapter]
     NextItem -->|blocked or error| Blocked
-    Batch --> Reconcile[requery progress and classify outcome]
-    Reconcile -->|advanced, still pending| NextItem
-    Reconcile -->|transient stall, retry budget left| Batch
-    Reconcile -->|blocked or retries exhausted| Blocked
+    Chapter --> StageCheck[verify staging and promote through domain operation]
+    StageCheck --> Reconcile[requery chapter state and artifacts]
+    Reconcile -->|promoted, batch has room| NextItem
+    Reconcile -->|promoted, batch boundary| Checkpoint[save compact batch checkpoint]
+    Checkpoint --> NextItem
+    Reconcile -->|retryable failure, chapter budget left| Chapter
+    Reconcile -->|blocked or attempts exhausted| Blocked
     Reconcile -->|all complete| QA[run deterministic QA]
     NextItem -->|completed| QA
     NextItem -->|stop after translate, completed| Done
@@ -180,9 +187,13 @@ Neither the normal crawl subprocess nor the profile-repair agent approves crawl.
 
 ### 5.3 Translation
 
-After the crawl gate, ensure metadata translation is complete. For every batch, read `next-translation-work-item --json` or its domain equivalent. On `pending`, record `progress_completed` and `chapter_id`, launch exactly one coordinator with a maximum of `batch_size` chapters, and require its compact result. Regardless of agent output or process exit, requery the workspace afterward. Accept progress only when newly completed chapters form the expected contiguous sequence and their count is between 1 and `batch_size`; a jump beyond the bound is a contract violation and blocks the run. A `blocked` work item, gap, or stale gate stops immediately.
+After the crawl gate, ensure metadata translation is complete through a separate native `ag_metadata_translator` invocation when needed. At each batch start and after every chapter, read `next-translation-work-item --json` or its domain equivalent. The orchestrator checks the current full crawl gate, catalog/state continuity, the target raw artifact, and the completed/hash-valid predecessor translation for every chapter after chapter 1. Missing or corrupt predecessor evidence blocks; the existing `prepare_translation_context` fallback that sets `prev_translation_path = null` for a later chapter is not allowed in this path and must be tightened. `next-translation-work-item` deterministically creates the chapter glossary context and provides absolute input/output paths. The orchestrator passes only these paths and the chapter ID to a fresh, direct `ag_translator` session. The agent reads source/context, makes linguistic choices, writes staged text and optional glossary proposals, self-reviews, and returns compact status; it never promotes or selects the next chapter.
 
-The coordinator owns up to three attempts **per chapter**, as the current translation skill specifies. The graph owns at most three **consecutive batch invocations with zero progress** for transient process failures. A batch with progress resets that outer counter, even if the process later exits abnormally; the next invocation starts at the first pending chapter. No graph retry occurs for a terminal domain blocker. Count an initial failed invocation as attempt 1 and halt when the configured limit is reached. Use bounded backoff for retryable process failures. Reconcile state before every retry so a crash after promotion cannot retranslate a completed chapter.
+Before **each** launch, the orchestrator records the attempt durably and allocates fresh staging paths under the run directory using the chapter ID and attempt number. Extend the work-item and verify/promote domain interfaces to accept this attempt identity and its staged paths; old fixed-name staging files are quarantined and cannot satisfy a new attempt. The domain operation validates that supplied paths are inside the current run's staging directory. Snapshot hashes of protected workspace state (`book.yaml`, `chapters.yaml`, `state.yaml`, glossary, prior promoted translations, and approvals) before dispatch. A translator may write only its two designated staging paths; unexpected mutations block and require repair. Keep raw and full translation text out of the prompt, graph state, and logs.
+
+After the process ends, regardless of exit code or claimed success, reconcile any promotion journal before interpreting chapter status. If the chapter is already promoted and its file/hash/state are valid after recovery, count it once and advance. Otherwise accept only the current attempt's staged files, run `verify-staged-chapter`, then the full glossary consistency and promotion operation. The agent's JSON is diagnostic, not proof of a translated chapter. The existing `promote_chapter_translation` writes the canonical text, then merges glossary, then updates `state.yaml`; those writes are individually atomic but the group is not. Before using it unattended, prepare the intended canonical text, glossary/conflict report, and state writes, recording their before/after hashes and chapter/attempt identity in a durable promotion journal **before** the first replacement. On replay, compare actual files to those hashes: finish missing replacements only when inputs still match, accept a fully committed chapter once, and block on divergent files. Remove the journal only after all outputs and state hashes are verified. Resume must never overwrite an already promoted valid chapter, silently accept a half-merged glossary, or retranslate because the process crashed after successful promotion.
+
+The orchestrator owns one retry budget of three agent launches **per pending chapter per run**, counting the initial launch. Retry only process failures, missing/invalid staging, or a correctable glossary/structure failure; include the bounded validation reason in the next prompt and use polite backoff. A stale gate, state gap, missing predecessor, unexpected agent mutation, or unrecoverable promotion state blocks immediately. Persist the attempt count before launch so `--resume` cannot reset it. On success, reset the current chapter attempt snapshot and continue to the next chapter in catalog order. A graph batch handles at most `batch_size` newly promoted chapters, saves a compact checkpoint, then starts a fresh batch if work remains. Progress is valid only for the expected chapter ID and valid canonical hash; an out-of-order promotion or jump beyond the batch limit is a contract violation. No batch-level zero-progress retry counter remains.
 
 ### 5.4 QA and QA gate
 
@@ -200,7 +211,7 @@ Workspace files win whenever a SQLite snapshot and file state differ. Graph chec
 
 `interrupt()` is used only in approval-decision nodes; approval writes happen in separate nodes after resume. The CLI must surface pending approval and exit as `paused`, rather than waiting on stdin during an unattended run. `--resume --decision approve|reject` resumes the current pending interrupt using the saved thread ID. `--resume` without `--decision` resumes a crash or stopped run only when no approval decision is pending. Resume keeps the original phase span; combining `--resume` with `--start-at` or `--stop-after` is invalid. To start a different phase, create a new run with `--start-at`; that needs valid workspace evidence, not the old run's SQLite checkpoint. Rejection ends that run as `blocked`. After correcting workspace data or rejecting a gate, a new invocation starts a new run and reevaluates the workspace. If a process crashed after approval but before its graph checkpoint, the replay checks the existing gate and skips the approval write.
 
-Timeouts are wall-clock limits on individual harness and deterministic crawl subprocess invocations. Set separate defaults for a translation batch and a potentially much longer crawl, both configurable. A lack of stdout alone is not a hang signal. On timeout or cancellation, terminate the whole child process tree, wait for pipes to close, flush logs, then reconcile workspace before retrying or stopping. Unexpected graph/domain errors surface as `error`; gate failures and operator-repair cases surface as `blocked`. No phase retries indefinitely.
+Timeouts are wall-clock limits on individual harness and deterministic crawl subprocess invocations. Set separate defaults for one chapter agent, metadata/profile-repair agents, and a potentially much longer crawl, all configurable. A lack of stdout alone is not a hang signal. On timeout or cancellation, terminate the whole child process tree, wait for pipes to close, flush logs, then reconcile workspace and the promotion journal before retrying or stopping. Unexpected graph/domain errors surface as `error`; gate failures and operator-repair cases surface as `blocked`. No phase retries indefinitely.
 
 ## 7. CLI contract
 
@@ -210,7 +221,8 @@ uv run python main.py orchestrate --workspace books/<slug> `
     [--start-at auto|crawl|translate|qa|export] `
     [--stop-after crawl|translate|qa|export] `
     [--harness agy] [--auto-approve] [--batch-size 5] `
-    [--batch-timeout 1800] [--crawl-timeout 21600] `
+    [--agy-model <slug>] [--agy-translation-model <slug>] `
+    [--chapter-timeout 1800] [--agent-timeout 1800] [--crawl-timeout 21600] `
     [--profile-repair-attempts 2] `
     [--formats epub,azw3] [--log-level compact|verbose] `
     [--allow-harness-permission-bypass]
@@ -220,40 +232,42 @@ uv run python main.py orchestrate --workspace books/<slug> --resume --decision a
 uv run python main.py orchestrate --workspace books/<slug> --resume --decision reject
 
 # New run from an existing full crawl checkpoint: translate only
-uv run python main.py orchestrate --workspace books/<slug> --start-at translate --stop-after translate
+uv run python main.py orchestrate --workspace books/<slug> --start-at translate --stop-after translate --agy-translation-model <slug>
 
 # New run using existing crawl and QA evidence: export only
 uv run python main.py orchestrate --workspace books/<slug> --start-at export --stop-after export
 ```
 
-These commands describe the interface to implement; they are not present in `main.py` yet. Effective batch size follows explicit CLI argument, project `.env` `DICH_TRUYEN_TRANSLATION_BATCH_SIZE`, then default 5. Validate positive sizes and timeouts; validate `--profile-repair-attempts` as a nonnegative integer, default 2. `--auto-approve` is an opt-in policy for eligible reports, not permission for an agent to approve its own work. The CLI prints the run ID, selected phase span, status, pending gate/report path when paused, and the next resume command. Exit codes are 0 for completed, 2 for paused, 3 for blocked, and 1 for unexpected error; internal routing still uses typed operation results rather than exit codes alone.
+These commands describe the interface to implement; they are not present in `main.py` yet. Effective batch size follows explicit CLI argument, project `.env` `DICH_TRUYEN_TRANSLATION_BATCH_SIZE`, then default 5. `--chapter-timeout` applies to each translator process; `--agent-timeout` applies to metadata and profile-repair processes. Validate positive sizes/timeouts and nonempty model slugs; validate `--profile-repair-attempts` as a nonnegative integer, default 2. Explicit model slugs are checked against `agy models` only when their phase may launch an agent; an export-only run does not require `agy`. `--resume` rejects new model flags and reuses the saved choices; to change a model, start a new run at the needed phase. `--auto-approve` is an opt-in policy for eligible reports, not permission for an agent to approve its own work. The CLI prints the run ID, selected phase span, status, pending gate/report path when paused, and the next resume command. Exit codes are 0 for completed, 2 for paused, 3 for blocked, and 1 for unexpected error; internal routing still uses typed operation results rather than exit codes alone.
 
 ## 8. Tracing and artifacts
 
-Use an unambiguous UUID run directory under `books/<slug>/reports/runs/<run_id>/` with a compact `run_summary.json` and one log per harness invocation. Persist timestamps, phase, attempt, process exit/timeout, before/after chapter counts, report paths, gate decisions, requested formats, and final outcome. The terminal shows phase milestones and elapsed time. Drain stdout and stderr concurrently, preserving their source. Raw text logs are bounded or rotated for long runs and are not copied into LangGraph state. Avoid recording secrets and full chapter contents; verbose mode means available CLI output, not a promise of private agent thoughts or structured tool-call events. SQLite checkpoints need a retention/cleanup policy for completed runs, while run summaries remain available for diagnosis.
+Use an unambiguous UUID run directory under `books/<slug>/reports/runs/<run_id>/` with a compact `run_summary.json` and one log per harness invocation. Persist timestamps, phase, chapter ID/attempt, process exit/timeout, before/after chapter counts, report paths, gate decisions, requested model slug per invocation, CLI-reported effective model if available, requested formats, and final outcome. The terminal shows phase milestones and elapsed time. Drain stdout and stderr concurrently, preserving their source. Raw text logs are bounded or rotated for long runs and are not copied into LangGraph state. Avoid recording secrets and full chapter contents; verbose mode means available CLI output, not a promise of private agent thoughts or structured tool-call events. SQLite checkpoints need a retention/cleanup policy for completed runs, while run summaries remain available for diagnosis.
 
 ## 9. Dependencies and implementation sequence
 
 After the Antigravity capability gate, resolve a **compatible, currently supported** LangGraph and SQLite checkpointer pair for Python 3.13, then commit exact versions in `uv.lock`. Do not carry forward the earlier `langgraph>=0.2,<1` and `langgraph-checkpoint-sqlite>=2,<3` ranges without checking the current APIs and resolver. Configure the SQLite checkpointer's safe deserialization options if required by the selected release.
 
-Implement in this order: (1) capability check and one-batch harness contract; (2) deterministic crawl JSON result, read-only profile probe, and shared approval operations; (3) shared process supervisor and Antigravity repair runner; (4) graph and SQLite resume; (5) tracer and CLI; (6) smoke run. This order proves both crawl and harness contracts before building the graph around them.
+Implement in this order: (1) capability check for direct custom-agent invocation and model selection; (2) orchestrator-specific shared harness guidance, deterministic chapter context/validation, and recoverable promotion; (3) deterministic crawl JSON result, read-only profile probe, and shared approval operations; (4) shared process supervisor and Antigravity runner; (5) graph, attempt journal, and SQLite resume; (6) tracer and CLI; (7) smoke run. This order proves the chapter and crawl contracts before building the graph around them.
 
 ## 10. Acceptance tests
 
 1. A mock two-batch full-book run creates only full crawl approval, advances chapters sequentially, passes QA, and exports the requested formats.
 2. Manual crawl and QA gates pause before approval. No skill or subprocess approves them. Resume with the same thread ID and unchanged report succeeds; changed report/evidence requires a fresh decision.
 3. A newly initialized empty-catalog workspace enters discovery before any crawl report or approval decision. Zero discovered chapters cannot be approved. Auto-approval refuses crawl blockers, partial crawl scope, crawl warnings, QA errors, and QA warnings. Manual QA may approve warnings and records that decision. Changing `chapters.yaml` invalidates either approval; changing `state.yaml` after QA invalidates QA approval without invalidating the earlier crawl approval.
-4. A coordinator promotes no more than `batch_size` new chapters per invocation. A gap or promotion beyond the bound blocks immediately.
+4. The orchestrator invokes one fresh native translator per chapter, in catalog order. Each graph batch promotes no more than `batch_size` chapters before checkpointing; the agent cannot choose another chapter or promote canonical files. A gap or promotion beyond the bound blocks immediately.
 5. A process crash after `promote-chapter`, after crawl approval, and after QA approval resumes without repeating completed work or losing the next pending chapter.
 6. `OperationResult.status == blocked/error` is honored even when the deterministic CLI process exits with code 0. Timeout ends all descendants and captures both output streams.
-7. Three consecutive zero-progress transient batch failures stop; progress resets the outer counter. Per-chapter retries remain bounded independently. Domain blockers are never retried automatically.
+7. Three agent launches for one chapter exhaust that run's budget, including launches across crash/resume. A failed attempt's stale staging is rejected. A later chapter gets its own budget; domain blockers are never retried automatically.
 8. QA errors in an otherwise fully translated book enter `needs repair` without a translation loop. A new run after repair reruns QA.
 9. Missing EPUBCheck blocks required EPUB export. Missing Calibre blocks an explicitly requested derivative; the default and configured format policies are tested separately.
 10. A missing profile, broken index selector, and broken chapter selector each invoke an isolated agent repair session, validate a workspace-local candidate, and retry deterministic crawl. The agent never approves crawl or changes book state directly; an attempted unauthorized workspace mutation is detected and blocks the run. An invalid candidate, repeated signature with no progress, and exhausted repair budget block cleanly.
 11. A read-only profile probe rejects an empty/wrong catalog and chapter extraction below threshold. A changed catalog order with existing state blocks automatic replacement instead of retrying against stale links. A repaired local profile does not change the shared domain template.
-12. A real two-chapter Antigravity smoke workspace proves profile repair, skill discovery, nested translator dispatch, one-batch termination, logs, SQLite pause/resume, and EPUB output before attempting a long unattended run.
+12. A real two-chapter Antigravity smoke workspace proves profile repair, direct `ag_translator` selection, exactly one chapter per agent process, explicit `--model` selection, logs, SQLite pause/resume, and EPUB output before attempting a long unattended run. An invalid explicit model fails before translation and never falls back silently.
 13. A fresh `--start-at crawl --stop-after crawl` run accepts an empty catalog, stops after a valid crawl approval, and never enters metadata or translation. A fresh `--start-at translate --stop-after translate` run succeeds using a valid crawl checkpoint without an earlier graph run or a crawl call; missing, stale, or partial crawl approval blocks without backtracking. It starts from the first pending chapter and completes at the requested endpoint.
 14. A fresh `--start-at qa --stop-after qa` run requires complete, gap-free translations and a current full crawl checkpoint, blocks without translating missing chapters, and can reuse a current QA checkpoint without rewriting the report. A fresh `--start-at export --stop-after export` run uses current prerequisite gates without `agy` or earlier phase invocations; stale QA or crawl evidence blocks.
 15. A paused or crashed run resumes at its saved node and endpoint. `--resume` with a new phase selector is rejected. A new run from another phase works from workspace evidence even if no prior SQLite thread exists; starting it supersedes an older paused run and prevents stale resume. `auto` stops at a satisfied `--stop-after` endpoint without running later phases.
+16. A crash after canonical translation write, after glossary merge, or after `state.yaml` update is recovered from the promotion journal without duplicate glossary changes or an unverified overwrite. A valid completed chapter is never retranslated. Missing or hash-invalid predecessor translation blocks even when its state says completed.
+17. `--agy-model` applies to all agent calls, including chapter translation when there is no override; `--agy-translation-model` overrides it only for chapter translation. Explicit selections remain pinned on resume. A QA-only or export-only run requires no model check or agent executable. Logs distinguish requested from CLI-reported effective model.
 
 Run tests and quality checks with `PYTHONUTF8=1` and workspace-local `UV_CACHE_DIR` on Windows.
