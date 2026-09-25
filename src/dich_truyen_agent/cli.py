@@ -107,6 +107,10 @@ def build_parser() -> argparse.ArgumentParser:
     prom_ch = subparsers.add_parser("promote-chapter")
     prom_ch.add_argument("--workspace", type=Path, required=True)
     prom_ch.add_argument("--chapter-id", type=int, required=True)
+    prom_ch.add_argument("--run-id")
+    prom_ch.add_argument("--attempt", type=int)
+    prom_ch.add_argument("--staged-txt-path", type=Path)
+    prom_ch.add_argument("--staged-yaml-path", type=Path)
     add_json_flag(prom_ch)
 
     show_prog = subparsers.add_parser("show-translation-progress")
@@ -115,11 +119,16 @@ def build_parser() -> argparse.ArgumentParser:
 
     next_work = subparsers.add_parser("next-translation-work-item")
     next_work.add_argument("--workspace", type=Path, required=True)
+    next_work.add_argument("--run-id")
+    next_work.add_argument("--attempt", type=int)
     add_json_flag(next_work)
 
     verify_staged = subparsers.add_parser("verify-staged-chapter")
     verify_staged.add_argument("--workspace", type=Path, required=True)
     verify_staged.add_argument("--chapter-id", type=int, required=True)
+    verify_staged.add_argument("--run-id")
+    verify_staged.add_argument("--attempt", type=int)
+    verify_staged.add_argument("--staged-txt-path", type=Path)
     add_json_flag(verify_staged)
 
     show_trans_settings = subparsers.add_parser("show-translation-settings")
@@ -369,7 +378,14 @@ def run_command(args: argparse.Namespace) -> OperationResult:
         from dich_truyen_agent.workspace import promote_chapter_translation
         
         try:
-            result = promote_chapter_translation(args.workspace, args.chapter_id)
+            result = promote_chapter_translation(
+                args.workspace,
+                args.chapter_id,
+                run_id=getattr(args, "run_id", None),
+                attempt=getattr(args, "attempt", None),
+                staged_txt_path=getattr(args, "staged_txt_path", None),
+                staged_yaml_path=getattr(args, "staged_yaml_path", None),
+            )
         except Exception as e:
             result = OperationResult(
                 status=OperationStatus.ERROR,
@@ -389,7 +405,11 @@ def run_command(args: argparse.Namespace) -> OperationResult:
         from dich_truyen_agent.workspace import next_translation_work_item
 
         try:
-            result = next_translation_work_item(args.workspace)
+            result = next_translation_work_item(
+                args.workspace,
+                run_id=getattr(args, "run_id", None),
+                attempt=getattr(args, "attempt", None),
+            )
         except Exception as e:
             result = OperationResult(
                 status=OperationStatus.ERROR,
@@ -399,7 +419,13 @@ def run_command(args: argparse.Namespace) -> OperationResult:
         from dich_truyen_agent.workspace import verify_staged_chapter
 
         try:
-            result = verify_staged_chapter(args.workspace, args.chapter_id)
+            result = verify_staged_chapter(
+                args.workspace,
+                args.chapter_id,
+                run_id=getattr(args, "run_id", None),
+                attempt=getattr(args, "attempt", None),
+                staged_txt_path=getattr(args, "staged_txt_path", None),
+            )
         except Exception as e:
             result = OperationResult(
                 status=OperationStatus.ERROR,

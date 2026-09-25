@@ -30,6 +30,7 @@ from dich_truyen_agent.models import (
 )
 from dich_truyen_agent.paths import (
     WorkspacePaths,
+    _is_beneath,
     validate_workspace_relative_path,
     workspace_paths,
 )
@@ -211,11 +212,31 @@ def install_discovered_catalog(
         atomic_write_yaml(paths.state, state)
 
 
+def get_staging_paths(
+    paths: WorkspacePaths,
+    chapter_id: int,
+    *,
+    run_id: str | None = None,
+    attempt: int | None = None,
+) -> tuple[Path, Path]:
+    if run_id is not None:
+        if attempt is None or attempt < 1:
+            raise ValueError(f"attempt must be a positive integer, got: {attempt}")
+        run_staging = paths.root / "reports" / "runs" / run_id / "staging"
+        staged_txt = run_staging / f"chuong-{chapter_id:04d}-attempt-{attempt:02d}-staged.txt"
+        staged_yaml = run_staging / f"chuong-{chapter_id:04d}-attempt-{attempt:02d}-proposals.yaml"
+        return staged_txt, staged_yaml
+    return (
+        paths.staging / f"chuong-{chapter_id:04d}-staged.txt",
+        paths.staging / f"chuong-{chapter_id:04d}-proposals.yaml",
+    )
+
+
 def prepare_translation_context(workspace_root: Path, chapter_id: int) -> OperationResult:
     """Validate gates and return absolute context paths for the translation worker."""
     import json
     try:
-        workspace_root = workspace_root.resolve()
+        workspace_root = Path(workspace_root).resolve()
         paths = workspace_paths(workspace_root.parent, workspace_root.name)
         
         # 1. Enforce crawl-approved checkpoint
@@ -261,20 +282,40 @@ def prepare_translation_context(workspace_root: Path, chapter_id: int) -> Operat
             raw_path,
         )
             
-        # 5. Resolve predecessor translation context with fallback
+        # 5. Resolve predecessor translation context strictly (no null fallback for chapter > 1)
         prev_translation_path = None
-        is_fallback = True
-        fallback_reason = "Chapter 1 has no predecessor context"
+        is_fallback = False
+        fallback_reason = None
         
-        if chapter_id > 1:
+        if chapter_id == 1:
+            is_fallback = True
+            fallback_reason = "Chapter 1 has no predecessor context"
+        else:
             prev_entry = catalog_by_id.get(chapter_id - 1)
-            if prev_entry:
-                candidate_path = paths.root / "translations" / prev_entry.translation_filename
-                if candidate_path.is_file():
-                    prev_translation_path = str(candidate_path.resolve())
-                    is_fallback = False
-                else:
-                    fallback_reason = f"Predecessor chapter {chapter_id - 1} translation file is missing or reset"
+            if not prev_entry:
+                return OperationResult(
+                    status=OperationStatus.BLOCKED,
+                    reason=f"predecessor chapter {chapter_id - 1} not found in catalog",
+                )
+            prev_state = state_by_id.get(chapter_id - 1)
+            if not prev_state or prev_state.translation.status is not StageStatus.COMPLETED:
+                return OperationResult(
+                    status=OperationStatus.BLOCKED,
+                    reason=f"preceding chapter {chapter_id - 1} translation is not completed; sequential translation constraint violated",
+                )
+            candidate_path = paths.root / "translations" / prev_entry.translation_filename
+            if not candidate_path.is_file():
+                return OperationResult(
+                    status=OperationStatus.BLOCKED,
+                    reason=f"predecessor chapter {chapter_id - 1} translation file is missing: {candidate_path}",
+                )
+            actual_sha = sha256_file(candidate_path)
+            if actual_sha != prev_state.translation.sha256:
+                return OperationResult(
+                    status=OperationStatus.BLOCKED,
+                    reason=f"hash mismatch for predecessor chapter {chapter_id - 1} translation file",
+                )
+            prev_translation_path = str(candidate_path.resolve())
                     
         context_payload = {
             "chapter_id": chapter_id,
@@ -285,7 +326,7 @@ def prepare_translation_context(workspace_root: Path, chapter_id: int) -> Operat
             "glossary_context_path": str(glossary_context_path.resolve()),
             "prev_translation_path": prev_translation_path,
             "is_fallback": is_fallback,
-            "fallback_reason": fallback_reason if is_fallback else None,
+            "fallback_reason": fallback_reason,
         }
         
         return OperationResult(
@@ -300,10 +341,18 @@ def prepare_translation_context(workspace_root: Path, chapter_id: int) -> Operat
         )
 
 
-def promote_chapter_translation(workspace_root: Path, chapter_id: int) -> OperationResult:
+def promote_chapter_translation(
+    workspace_root: Path,
+    chapter_id: int,
+    *,
+    run_id: str | None = None,
+    attempt: int | None = None,
+    staged_txt_path: Path | None = None,
+    staged_yaml_path: Path | None = None,
+) -> OperationResult:
     """Validate staged translation outputs and atomically promote them, merging proposals and updating state."""
     try:
-        workspace_root = workspace_root.resolve()
+        workspace_root = Path(workspace_root).resolve()
         paths = workspace_paths(workspace_root.parent, workspace_root.name)
         
         catalog = load_yaml_model(paths.chapters, ChapterCatalog)
@@ -321,8 +370,34 @@ def promote_chapter_translation(workspace_root: Path, chapter_id: int) -> Operat
         entry = catalog_by_id[chapter_id]
         chapter_state = state_by_id[chapter_id]
         
-        staged_txt = paths.staging / f"chuong-{chapter_id:04d}-staged.txt"
-        staged_yaml = paths.staging / f"chuong-{chapter_id:04d}-proposals.yaml"
+        if staged_txt_path is not None:
+            staged_txt = Path(staged_txt_path)
+            if not staged_txt.is_absolute():
+                staged_txt = paths.root / staged_txt
+            else:
+                staged_txt = staged_txt.resolve()
+                if not _is_beneath(paths.root, staged_txt):
+                    return OperationResult(
+                        status=OperationStatus.ERROR,
+                        reason=f"staged translation path is outside canonical run staging: {staged_txt}",
+                    )
+            if run_id is not None:
+                expected_dir = (paths.root / "reports" / "runs" / run_id / "staging").resolve()
+                if staged_txt.parent.resolve() != expected_dir:
+                    return OperationResult(
+                        status=OperationStatus.ERROR,
+                        reason=f"staged translation path is outside canonical run staging: {staged_txt}",
+                    )
+            if staged_yaml_path is not None:
+                staged_yaml = Path(staged_yaml_path)
+                if not staged_yaml.is_absolute():
+                    staged_yaml = paths.root / staged_yaml
+                else:
+                    staged_yaml = staged_yaml.resolve()
+            else:
+                staged_yaml = staged_txt.with_name(staged_txt.name.replace("-staged.txt", "-proposals.yaml"))
+        else:
+            staged_txt, staged_yaml = get_staging_paths(paths, chapter_id, run_id=run_id, attempt=attempt)
         
         # 1. Validate staged translation existence and size
         if not staged_txt.is_file():
@@ -330,6 +405,18 @@ def promote_chapter_translation(workspace_root: Path, chapter_id: int) -> Operat
                 status=OperationStatus.ERROR,
                 reason=f"staged translation file not found: {staged_txt}",
             )
+
+        # Structural check for orchestrator / attempt-scoped promotion
+        if run_id is not None or attempt is not None or staged_txt_path is not None:
+            verification = verify_staged_chapter(
+                workspace_root,
+                chapter_id,
+                run_id=run_id,
+                attempt=attempt,
+                staged_txt_path=staged_txt,
+            )
+            if verification.status is not OperationStatus.OK:
+                return verification
             
         text = staged_txt.read_text(encoding="utf-8")
         if not text.strip() or len(text.strip()) < 10:
@@ -395,7 +482,7 @@ def promote_chapter_translation(workspace_root: Path, chapter_id: int) -> Operat
         )
         atomic_write_yaml(paths.state, state)
         
-        # 6. Clean up staging files
+        # 6. Clean up staging files for this attempt
         try:
             staged_txt.unlink()
         except OSError:
@@ -410,6 +497,11 @@ def promote_chapter_translation(workspace_root: Path, chapter_id: int) -> Operat
             status=OperationStatus.OK,
             reason=f"chapter {chapter_id} translation promoted successfully",
             report_paths=[rel_dest_path] + merge_report_paths,
+        )
+    except Exception as error:
+        return OperationResult(
+            status=OperationStatus.ERROR,
+            reason=f"Promotion failed: {error}",
         )
     except Exception as error:
         return OperationResult(
@@ -479,10 +571,15 @@ def get_next_pending_translation(workspace_root: Path) -> OperationResult:
         )
 
 
-def next_translation_work_item(workspace_root: Path) -> OperationResult:
+def next_translation_work_item(
+    workspace_root: Path,
+    *,
+    run_id: str | None = None,
+    attempt: int | None = None,
+) -> OperationResult:
     """Return a compact, deterministic payload for the next translation task."""
     try:
-        workspace_root = workspace_root.resolve()
+        workspace_root = Path(workspace_root).resolve()
         paths = workspace_paths(workspace_root.parent, workspace_root.name)
 
         catalog = load_yaml_model(paths.chapters, ChapterCatalog)
@@ -593,8 +690,9 @@ def next_translation_work_item(workspace_root: Path) -> OperationResult:
             )
 
         context_payload = json.loads(context.reason)
-        staged_txt = paths.staging / f"chuong-{target.chapter_id:04d}-staged.txt"
-        staged_yaml = paths.staging / f"chuong-{target.chapter_id:04d}-proposals.yaml"
+        staged_txt, staged_yaml = get_staging_paths(
+            paths, target.chapter_id, run_id=run_id, attempt=attempt
+        )
         payload = {
             "state": "pending",
             "chapter_id": target.chapter_id,
@@ -614,6 +712,10 @@ def next_translation_work_item(workspace_root: Path) -> OperationResult:
             "staged_txt_exists": staged_txt.is_file(),
             "staged_yaml_exists": staged_yaml.is_file(),
         }
+        if run_id is not None:
+            payload["run_id"] = run_id
+        if attempt is not None:
+            payload["attempt"] = attempt
         return OperationResult(
             status=OperationStatus.OK,
             reason=f"translation work item ready for chapter {target.chapter_id}",
@@ -635,12 +737,53 @@ def next_translation_work_item(workspace_root: Path) -> OperationResult:
         )
 
 
-def verify_staged_chapter(workspace_root: Path, chapter_id: int) -> OperationResult:
+def verify_staged_chapter(
+    workspace_root: Path,
+    chapter_id: int,
+    *,
+    run_id: str | None = None,
+    attempt: int | None = None,
+    staged_txt_path: Path | None = None,
+) -> OperationResult:
     """Perform structural staged-output checks without replacing promotion gates."""
     try:
-        workspace_root = workspace_root.resolve()
+        workspace_root = Path(workspace_root).resolve()
         paths = workspace_paths(workspace_root.parent, workspace_root.name)
-        staged_txt = paths.staging / f"chuong-{chapter_id:04d}-staged.txt"
+
+        if staged_txt_path is not None:
+            staged_txt = Path(staged_txt_path)
+            if not staged_txt.is_absolute():
+                staged_txt = paths.root / staged_txt
+            else:
+                staged_txt = staged_txt.resolve()
+                if not _is_beneath(paths.root, staged_txt):
+                    reason = f"staged translation path escapes workspace: {staged_txt}"
+                    return OperationResult(
+                        status=OperationStatus.ERROR,
+                        reason=reason,
+                        data={"ok": False, "chapter_id": chapter_id, "first_line": None, "reason": reason},
+                    )
+            if run_id is not None:
+                expected_dir = (paths.root / "reports" / "runs" / run_id / "staging").resolve()
+                if staged_txt.parent.resolve() != expected_dir:
+                    reason = f"staged translation path {staged_txt} is outside canonical run staging {expected_dir}"
+                    return OperationResult(
+                        status=OperationStatus.ERROR,
+                        reason=reason,
+                        data={"ok": False, "chapter_id": chapter_id, "first_line": None, "reason": reason},
+                    )
+                if attempt is not None:
+                    expected_name = f"chuong-{chapter_id:04d}-attempt-{attempt:02d}-staged.txt"
+                    if staged_txt.name != expected_name:
+                        reason = f"staged translation filename {staged_txt.name} does not match expected {expected_name}"
+                        return OperationResult(
+                            status=OperationStatus.ERROR,
+                            reason=reason,
+                            data={"ok": False, "chapter_id": chapter_id, "first_line": None, "reason": reason},
+                        )
+        else:
+            staged_txt, _ = get_staging_paths(paths, chapter_id, run_id=run_id, attempt=attempt)
+
         if not staged_txt.is_file() or not staged_txt.read_text(encoding="utf-8").strip():
             reason = f"staged translation missing or empty: {staged_txt}"
             return OperationResult(
