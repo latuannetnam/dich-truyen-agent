@@ -4,14 +4,13 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
-from dich_truyen_agent.checkpoints import approve_checkpoint, approve_full_crawl
+from dich_truyen_agent.checkpoints import approve_full_crawl
 from dich_truyen_agent.models import (
     ApprovalScope,
     BookMetadata,
     BookState,
     ChapterCatalog,
     ChapterCatalogEntry,
-    CheckpointType,
     CrawlReport,
     StageRecord,
     StageStatus,
@@ -258,18 +257,17 @@ def build_qa_approved_workspace(
     chapter_count: int = 2,
     slug: str = "test-book",
 ) -> WorkspaceFixture:
+    from dich_truyen_agent.checkpoints import approve_current_qa
+    from dich_truyen_agent.models import QAReport
     wf = build_translated_workspace(tmp_path, chapter_count=chapter_count, slug=slug)
     paths = workspace_paths(wf.root.parent, wf.root.name)
 
     qa_report = paths.reports / "qa-report.yaml"
     qa_report.parent.mkdir(parents=True, exist_ok=True)
-    qa_report.write_text("qa check ok 0 warnings 0 errors", encoding="utf-8")
-
-    covered = [f"translations/{t.name}" for t in wf.translation_paths]
-    approve_checkpoint(
-        wf.root,
-        CheckpointType.QA_APPROVED,
-        "reports/qa-report.yaml",
-        covered,
+    report = QAReport(
+        summary={"error_count": 0, "warning_count": 0, "findings_count": 0, "passed": True},
+        findings=[],
     )
+    atomic_write_yaml(qa_report, report)
+    approve_current_qa(wf.root, report)
     return wf

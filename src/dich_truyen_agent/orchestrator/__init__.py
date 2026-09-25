@@ -5,14 +5,17 @@ from dich_truyen_agent.orchestrator.models import OrchestratorConfig, RunSummary
 from dich_truyen_agent.orchestrator.process import ProcessResult, run_process
 from dich_truyen_agent.orchestrator.state import BookOrchestratorState, create_initial_state
 from dich_truyen_agent.orchestrator.tracer import ActivityTracer
+from dich_truyen_agent.orchestrator.workspace_ops import EntryDecision, WorkspaceOps
 
 __all__ = [
     "ActivityTracer",
     "AttemptJournal",
     "BookOrchestratorState",
+    "EntryDecision",
     "OrchestratorConfig",
     "ProcessResult",
     "RunSummary",
+    "WorkspaceOps",
     "create_initial_state",
     "run_process",
 ]
