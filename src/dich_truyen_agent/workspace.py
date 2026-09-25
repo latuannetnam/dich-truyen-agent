@@ -1,14 +1,16 @@
 from __future__ import annotations
 
+import hashlib
 import json
 from datetime import UTC, datetime
 from pathlib import Path
 
 import yaml
+from pydantic import BaseModel
 
 from dich_truyen_agent.checkpoints import check_gate
 from dich_truyen_agent.glossary import (
-    merge_glossary_proposals,
+    prepare_glossary_merge,
     validate_staged_glossary_consistency,
     write_chapter_glossary_context,
 )
@@ -27,6 +29,8 @@ from dich_truyen_agent.models import (
     CheckpointType,
     StageRecord,
     GlossaryTerm,
+    PromotionJournal,
+    PromotionTargetWrite,
 )
 from dich_truyen_agent.paths import (
     WorkspacePaths,
@@ -41,6 +45,30 @@ from dich_truyen_agent.storage import (
     sha256_file,
     atomic_write_text,
 )
+
+
+class PromotionFailpoint:
+    _active_failpoint: str | None = None
+
+    @classmethod
+    def set(cls, name: str | None) -> None:
+        cls._active_failpoint = name
+
+    @classmethod
+    def trigger(cls, name: str) -> None:
+        if cls._active_failpoint == name:
+            cls._active_failpoint = None
+            raise RuntimeError(f"Simulation failpoint reached: {name}")
+
+
+def _serialize_model(model: BaseModel) -> str:
+    validated = type(model).model_validate(model.model_dump(mode="json"))
+    return yaml.safe_dump(
+        validated.model_dump(mode="json"),
+        allow_unicode=True,
+        sort_keys=False,
+    )
+
 
 
 def _compact_paths(paths: list[Path]) -> list[str]:
@@ -368,7 +396,6 @@ def promote_chapter_translation(
             )
             
         entry = catalog_by_id[chapter_id]
-        chapter_state = state_by_id[chapter_id]
         
         if staged_txt_path is not None:
             staged_txt = Path(staged_txt_path)
@@ -459,30 +486,138 @@ def promote_chapter_translation(
         if glossary_validation.status is not OperationStatus.OK:
             return glossary_validation
                 
-        # 3. Atomic Promotion of translation text
+        # 3. Prepare all replacement payloads and hashes before the first write
         rel_dest_path = f"translations/{entry.translation_filename}"
         dest_path = validate_workspace_relative_path(workspace_root, rel_dest_path)
-        atomic_write_text(dest_path, text)
-        
-        # 4. SHA256 hashing and progressive glossary merge
-        sha256 = sha256_file(dest_path)
-        merge_report_paths = []
+        dest_before_sha = sha256_file(dest_path) if dest_path.is_file() else None
+        dest_after_sha = hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+        targets: list[PromotionTargetWrite] = [
+            PromotionTargetWrite(
+                path=rel_dest_path,
+                before_sha256=dest_before_sha,
+                after_sha256=dest_after_sha,
+                content=text,
+            )
+        ]
+
+        merge_report_paths: list[str] = []
         if proposals:
-            merge_res = merge_glossary_proposals(workspace_root, chapter_id, proposals)
-            if merge_res.status is OperationStatus.ERROR:
-                return merge_res
-            merge_report_paths = merge_res.report_paths
-            
-        # 5. Update state.yaml translation status
-        chapter_state.translation = StageRecord(
-            status=StageStatus.COMPLETED,
-            canonical_path=rel_dest_path,
-            sha256=sha256,
-            updated_at=datetime.now(UTC),
+            snapshot_filename = f"chapter-{chapter_id:04d}.yaml"
+            snapshot_path = paths.glossary_snapshots / snapshot_filename
+            existing_glossary = (
+                load_yaml_model(paths.glossary, BookGlossary)
+                if paths.glossary.is_file()
+                else BookGlossary(terms={})
+            )
+            snapshot_content = _serialize_model(existing_glossary)
+            snapshot_before = sha256_file(snapshot_path) if snapshot_path.is_file() else None
+            snapshot_after = hashlib.sha256(snapshot_content.encode("utf-8")).hexdigest()
+            targets.append(
+                PromotionTargetWrite(
+                    path=f"checkpoints/glossary-snapshots/{snapshot_filename}",
+                    before_sha256=snapshot_before,
+                    after_sha256=snapshot_after,
+                    content=snapshot_content,
+                )
+            )
+
+            merged_glossary, conflict_report = prepare_glossary_merge(
+                workspace_root, chapter_id, proposals
+            )
+            glossary_content = _serialize_model(merged_glossary)
+            glossary_before = sha256_file(paths.glossary) if paths.glossary.is_file() else None
+            glossary_after = hashlib.sha256(glossary_content.encode("utf-8")).hexdigest()
+            targets.append(
+                PromotionTargetWrite(
+                    path="glossary.yaml",
+                    before_sha256=glossary_before,
+                    after_sha256=glossary_after,
+                    content=glossary_content,
+                )
+            )
+
+            if conflict_report is not None and conflict_report.conflicts:
+                conflicts_content = _serialize_model(conflict_report)
+                conflicts_before = (
+                    sha256_file(paths.glossary_conflicts)
+                    if paths.glossary_conflicts.is_file()
+                    else None
+                )
+                conflicts_after = hashlib.sha256(conflicts_content.encode("utf-8")).hexdigest()
+                targets.append(
+                    PromotionTargetWrite(
+                        path="reports/glossary-conflicts.yaml",
+                        before_sha256=conflicts_before,
+                        after_sha256=conflicts_after,
+                        content=conflicts_content,
+                    )
+                )
+                merge_report_paths.append("reports/glossary-conflicts.yaml")
+
+        # Prepare updated state
+        updated_state = state.model_copy(deep=True)
+        for ch in updated_state.chapters:
+            if ch.chapter_id == chapter_id:
+                ch.translation = StageRecord(
+                    status=StageStatus.COMPLETED,
+                    canonical_path=rel_dest_path,
+                    sha256=dest_after_sha,
+                    updated_at=datetime.now(UTC),
+                )
+                break
+        state_content = _serialize_model(updated_state)
+        state_before = sha256_file(paths.state) if paths.state.is_file() else None
+        state_after = hashlib.sha256(state_content.encode("utf-8")).hexdigest()
+        targets.append(
+            PromotionTargetWrite(
+                path="state.yaml",
+                before_sha256=state_before,
+                after_sha256=state_after,
+                content=state_content,
+            )
         )
-        atomic_write_yaml(paths.state, state)
-        
-        # 6. Clean up staging files for this attempt
+
+        # 4. Atomically persist journal
+        journal = PromotionJournal(
+            chapter_id=chapter_id,
+            run_id=run_id,
+            attempt=attempt,
+            targets=targets,
+            staged_txt_path=str(staged_txt.resolve()) if staged_txt.is_file() else None,
+            staged_yaml_path=str(staged_yaml.resolve()) if staged_yaml.is_file() else None,
+        )
+        journal_path = paths.reports / f"promotion-journal-{chapter_id}.yaml"
+        atomic_write_yaml(journal_path, journal)
+
+        # 5. Atomically replace each target with failpoints
+        # Target 1: canonical text
+        atomic_write_text(dest_path, text)
+        PromotionFailpoint.trigger("after_canonical")
+
+        # Target 2..N-1: glossary snapshot, glossary, conflicts
+        if proposals:
+            for t in targets[1:-1]:
+                t_path = validate_workspace_relative_path(workspace_root, t.path)
+                atomic_write_text(t_path, t.content)
+            PromotionFailpoint.trigger("after_glossary")
+
+        # Target N: state
+        atomic_write_text(paths.state, targets[-1].content)
+        PromotionFailpoint.trigger("after_state")
+
+        # 6. Verify all targets
+        for t in targets:
+            t_path = validate_workspace_relative_path(workspace_root, t.path)
+            if not t_path.is_file() or sha256_file(t_path) != t.after_sha256:
+                raise RuntimeError(f"Post-promotion verification failed for {t.path}")
+
+        # 7. Cleanup staging files and remove journal
+        try:
+            journal_path.unlink()
+        except OSError:
+            pass
+
         try:
             staged_txt.unlink()
         except OSError:
@@ -492,7 +627,7 @@ def promote_chapter_translation(
                 staged_yaml.unlink()
             except OSError:
                 pass
-                
+
         return OperationResult(
             status=OperationStatus.OK,
             reason=f"chapter {chapter_id} translation promoted successfully",
@@ -503,11 +638,93 @@ def promote_chapter_translation(
             status=OperationStatus.ERROR,
             reason=f"Promotion failed: {error}",
         )
+
+
+def recover_chapter_promotion(workspace_root: Path, chapter_id: int) -> OperationResult:
+    """Recover an interrupted chapter promotion using the durable promotion journal."""
+    try:
+        workspace_root = Path(workspace_root).resolve()
+        paths = workspace_paths(workspace_root.parent, workspace_root.name)
+        journal_path = paths.reports / f"promotion-journal-{chapter_id}.yaml"
+        if not journal_path.is_file():
+            if paths.state.is_file():
+                state = load_yaml_model(paths.state, BookState)
+                for ch in state.chapters:
+                    if ch.chapter_id == chapter_id and ch.translation.status is StageStatus.COMPLETED:
+                        return OperationResult(
+                            status=OperationStatus.OK,
+                            reason=f"chapter {chapter_id} promotion already completed (no active journal)",
+                        )
+            return OperationResult(
+                status=OperationStatus.OK,
+                reason=f"no promotion journal found for chapter {chapter_id}",
+            )
+
+        journal = load_yaml_model(journal_path, PromotionJournal)
+
+        # 1. Inspect all targets for divergence
+        for target in journal.targets:
+            target_path = validate_workspace_relative_path(workspace_root, target.path)
+            current_sha = sha256_file(target_path) if target_path.is_file() else None
+            if current_sha != target.after_sha256 and current_sha != target.before_sha256:
+                return OperationResult(
+                    status=OperationStatus.BLOCKED,
+                    reason=(
+                        f"Target file {target.path} diverged during recovery: "
+                        f"current SHA256 {current_sha} matches neither recorded before ({target.before_sha256}) "
+                        f"nor after ({target.after_sha256})"
+                    ),
+                )
+
+        # 2. Roll forward all targets not yet at after_sha256
+        for target in journal.targets:
+            target_path = validate_workspace_relative_path(workspace_root, target.path)
+            current_sha = sha256_file(target_path) if target_path.is_file() else None
+            if current_sha != target.after_sha256:
+                atomic_write_text(target_path, target.content)
+
+        # 3. Verify all targets
+        for target in journal.targets:
+            target_path = validate_workspace_relative_path(workspace_root, target.path)
+            current_sha = sha256_file(target_path) if target_path.is_file() else None
+            if current_sha != target.after_sha256:
+                return OperationResult(
+                    status=OperationStatus.ERROR,
+                    reason=f"Verification failed after recovery write for {target.path}",
+                )
+
+        # 4. Clean up staging files if recorded
+        if journal.staged_txt_path:
+            p = Path(journal.staged_txt_path)
+            if p.is_file():
+                try:
+                    p.unlink()
+                except OSError:
+                    pass
+        if journal.staged_yaml_path:
+            p = Path(journal.staged_yaml_path)
+            if p.is_file():
+                try:
+                    p.unlink()
+                except OSError:
+                    pass
+
+        # 5. Remove journal
+        try:
+            journal_path.unlink()
+        except OSError:
+            pass
+
+        return OperationResult(
+            status=OperationStatus.OK,
+            reason=f"chapter {chapter_id} promotion recovered successfully",
+        )
     except Exception as error:
         return OperationResult(
             status=OperationStatus.ERROR,
-            reason=f"Promotion failed: {error}",
+            reason=f"Recovery failed: {error}",
         )
+
 
 
 def get_next_pending_translation(workspace_root: Path) -> OperationResult:

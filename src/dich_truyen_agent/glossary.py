@@ -267,6 +267,49 @@ def initialize_glossary_file(workspace_root: Path, terms: dict[str, dict]) -> Op
         )
 
 
+def prepare_glossary_merge(
+    workspace_root: Path,
+    chapter_id: int,
+    proposals: dict[str, GlossaryTerm],
+) -> tuple[BookGlossary, GlossaryConflictReport | None]:
+    """Compute the merged glossary and conflict report without writing files."""
+    paths = workspace_paths(workspace_root.parent, workspace_root.name)
+    if paths.glossary.is_file():
+        glossary = load_yaml_model(paths.glossary, BookGlossary)
+    else:
+        glossary = BookGlossary(terms={})
+
+    if paths.glossary_conflicts.is_file():
+        conflict_report = load_yaml_model(paths.glossary_conflicts, GlossaryConflictReport)
+    else:
+        conflict_report = GlossaryConflictReport(conflicts=[])
+
+    conflicts_changed = False
+    for term, proposed_term in proposals.items():
+        if term not in glossary.terms:
+            proposed_term.source = f"chapter_{chapter_id}_proposal"
+            proposed_term.is_canonical = False
+            glossary.terms[term] = proposed_term
+        else:
+            existing_term = glossary.terms[term]
+            if existing_term.translation == proposed_term.translation:
+                if proposed_term.note and not existing_term.note:
+                    existing_term.note = proposed_term.note
+            else:
+                conflict = GlossaryConflict(
+                    term=term,
+                    existing_translation=existing_term.translation,
+                    existing_source=existing_term.source,
+                    proposed_translation=proposed_term.translation,
+                    proposed_source=f"chapter_{chapter_id}_proposal",
+                    chapter_id=chapter_id,
+                )
+                conflict_report.conflicts.append(conflict)
+                conflicts_changed = True
+
+    return glossary, (conflict_report if (conflicts_changed or paths.glossary_conflicts.is_file()) else None)
+
+
 def merge_glossary_proposals(
     workspace_root: Path,
     chapter_id: int,

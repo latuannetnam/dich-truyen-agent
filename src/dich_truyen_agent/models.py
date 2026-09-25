@@ -105,6 +105,23 @@ class CheckpointRecord(PersistedModel):
     scope: ApprovalScope = ApprovalScope.FULL
 
 
+class PromotionTargetWrite(PersistedModel):
+    path: str
+    before_sha256: str | None = None
+    after_sha256: str
+    content: str
+
+
+class PromotionJournal(PersistedModel):
+    schema_version: int = 1
+    chapter_id: int
+    run_id: str | None = None
+    attempt: int | None = None
+    targets: list[PromotionTargetWrite] = Field(default_factory=list)
+    staged_txt_path: str | None = None
+    staged_yaml_path: str | None = None
+
+
 class TranslationStyle(PersistedModel):
     name: str
     description: str
