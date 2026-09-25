@@ -102,8 +102,8 @@ Do not checkpoint raw source text, chapter translations, full report bodies, per
 flowchart TD
     Start([start or resume]) --> Inspect[reconcile workspace and gates]
     Inspect -->|crawl gate valid and full| Metadata[ensure translated metadata]
-    Inspect -->|crawl data incomplete| Crawl[run crawl work]
-    Inspect -->|crawl data ready, gate missing| CrawlReport[build and validate crawl report]
+    Inspect -->|catalog empty or raw incomplete| Crawl[discover if needed, then download raw]
+    Inspect -->|nonempty catalog and raw ready, gate missing| CrawlReport[build and validate crawl report]
     Crawl --> CrawlReport
     CrawlReport -->|blockers or incomplete scope| Blocked([blocked])
     CrawlReport -->|eligible| CrawlDecision{auto policy or approval interrupt}
@@ -131,7 +131,9 @@ flowchart TD
 
 ### 5.1 Crawl and crawl gate
 
-On entry, validate `book.yaml`, `chapters.yaml`, `state.yaml`, style, and workspace path. If an existing **full** `crawl-approved` gate is current, skip crawl. Otherwise build a report from the current workspace. Run crawl work only if raw chapters are missing or failed; after the harness exits, rebuild the report and inspect `approval_blockers(report)`, `selected_count`, `completed_count`, `scope`, and warnings. Do not infer readiness from `failed_count == 0`. The full-book path requires `scope == FULL`, `selected_count == discovered_count`, and no blockers.
+On entry, validate `book.yaml`, `chapters.yaml`, `state.yaml`, style, and workspace path. A workspace freshly created by `init-book` has an empty catalog and state; this is valid *before discovery*, not a crawl result. If an existing **full** `crawl-approved` gate is current, skip crawl. Otherwise, when `chapters.yaml` is empty, call crawl work immediately. For an existing nonempty catalog, build a report first and run crawl work only if raw chapters are missing or failed. After the harness exits, rebuild the report and inspect `approval_blockers(report)`, `discovered_count`, `selected_count`, `completed_count`, `scope`, and warnings. Do not infer readiness from `failed_count == 0`. The full-book path requires `discovered_count > 0`, `scope == FULL`, `selected_count == discovered_count`, `completed_count == selected_count`, and no blockers. A zero-chapter catalog is always blocked from approval, even if the report currently contains no blocker.
+
+For a new book, the crawl-only agent reads `source_url` and slug from `book.yaml` and runs the existing `crawl-book` operation with the workspace's books root, `--max-chapters 0`, and the configured chapter delay. That operation loads the active source-domain profile, fetches the index with its declared encoding and browser fallback, discovers and validates chapter links, writes `chapters.yaml` and matching pending chapter records in `state.yaml`, then downloads chapter bodies sequentially into `raw/`. It validates extraction, uses browser fallback and bounded retries where appropriate, writes each successful raw file and hash atomically, and skips valid completed raw files on a later invocation. If discovery finds no chapters or the profile/index is blocked, stop with the crawl diagnostic; do not proceed to approval or translation. A resumed crawl with a nonempty catalog reuses that catalog and downloads only pending, failed, or invalid raw artifacts. Profile repair still uses the existing local override and validation workflow; it never silently promotes a local override to a shared profile.
 
 The current crawl skill itself runs `approve-crawl`. The orchestrator-facing prompt/adapter must stop the agent before that step, or the skill must gain a generated crawl-only contract. Auto-approval requires full scope, no blockers, and no warnings; warnings require a manual decision. Manual approval is a LangGraph `interrupt()` with a compact report summary and report path. The approval node must have no side effects before `interrupt()`. Save hashes of the persisted report and the raw evidence covered by it with the pending request; on resume, compare both against the current files before applying the decision. Changed evidence requires a fresh report and decision. After approval, call the shared approval operation and verify `check_gate` and full scope again.
 
@@ -190,7 +192,7 @@ Implement in this order: (1) capability check and one-batch harness contract; (2
 
 1. A mock two-batch full-book run creates only full crawl approval, advances chapters sequentially, passes QA, and exports the requested formats.
 2. Manual crawl and QA gates pause before approval. No skill or subprocess approves them. Resume with the same thread ID and unchanged report succeeds; changed report/evidence requires a fresh decision.
-3. Auto-approval refuses crawl blockers, partial crawl scope, crawl warnings, QA errors, and QA warnings. Manual QA may approve warnings and records that decision. Changing `chapters.yaml` invalidates either approval; changing `state.yaml` after QA invalidates QA approval without invalidating the earlier crawl approval.
+3. A newly initialized empty-catalog workspace enters discovery before any crawl report or approval decision. Zero discovered chapters cannot be approved. Auto-approval refuses crawl blockers, partial crawl scope, crawl warnings, QA errors, and QA warnings. Manual QA may approve warnings and records that decision. Changing `chapters.yaml` invalidates either approval; changing `state.yaml` after QA invalidates QA approval without invalidating the earlier crawl approval.
 4. A coordinator promotes no more than `batch_size` new chapters per invocation. A gap or promotion beyond the bound blocks immediately.
 5. A process crash after `promote-chapter`, after crawl approval, and after QA approval resumes without repeating completed work or losing the next pending chapter.
 6. `OperationResult.status == blocked/error` is honored even when the deterministic CLI process exits with code 0. Timeout ends all descendants and captures both output streams.
