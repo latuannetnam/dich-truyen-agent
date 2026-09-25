@@ -20,7 +20,7 @@ from dich_truyen_agent.models import (
     ProgressSummary,
 )
 from dich_truyen_agent.paths import workspace_paths
-from dich_truyen_agent.storage import load_yaml_model
+from dich_truyen_agent.storage import atomic_write_text, load_yaml_model
 
 
 def compile_epub_in_memory(
@@ -429,6 +429,17 @@ def export_book(workspace_root: Path, formats: list[str]) -> OperationResult:
                 else:
                     # Conversion errored out
                     return conv_res
+            elif fmt_clean == "txt":
+                txt_path = paths.exports / f"{book_metadata.book_slug}.txt"
+                lines = [f"{book_metadata.translated_title or book_metadata.title}\n"]
+                if book_metadata.translated_author or book_metadata.author:
+                    lines.append(f"Tác giả: {book_metadata.translated_author or book_metadata.author}\n\n")
+                for entry in catalog.chapters:
+                    ch_path = paths.translations / entry.translation_filename
+                    if ch_path.is_file():
+                        lines.append(ch_path.read_text(encoding="utf-8") + "\n\n")
+                atomic_write_text(txt_path, "".join(lines))
+                saved_reports.append(str(txt_path.relative_to(workspace_root).as_posix()))
             else:
                 warnings.append(f"Skipped unsupported format: {fmt}")
 

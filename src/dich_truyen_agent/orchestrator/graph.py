@@ -8,12 +8,14 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.types import interrupt
 
 from dich_truyen_agent.checkpoints import (
+    approve_current_qa,
     approve_full_crawl,
     check_orchestrator_gate,
 )
 from dich_truyen_agent.crawl_probe import probe_crawl_profile
 from dich_truyen_agent.crawl_profiles import install_local_profile
 from dich_truyen_agent.crawl_reports import build_crawl_report
+from dich_truyen_agent.export import export_book
 from dich_truyen_agent.models import (
     ApprovalScope,
     BookMetadata,
@@ -23,8 +25,10 @@ from dich_truyen_agent.models import (
     CrawlReport,
     CrawlSettings,
     OperationStatus,
+    QAReport,
     StageStatus,
 )
+from dich_truyen_agent.qa import run_qa_check
 from dich_truyen_agent.orchestrator.attempts import AttemptJournal
 from dich_truyen_agent.orchestrator.models import OrchestratorConfig, RunOutcome, RunSummary
 from dich_truyen_agent.orchestrator.runners import resolve_model_for_phase
@@ -56,6 +60,24 @@ def _compute_crawl_evidence_hashes(workspace_root: Path) -> dict[str, str]:
     crawl_rep = paths.reports / "crawl.yaml"
     if crawl_rep.is_file():
         hashes["reports/crawl.yaml"] = sha256_file(crawl_rep)
+    return hashes
+
+
+def _compute_qa_evidence_hashes(workspace_root: Path) -> dict[str, str]:
+    paths = workspace_paths(workspace_root.parent, workspace_root.name)
+    hashes: dict[str, str] = {}
+    if paths.chapters.is_file():
+        hashes["chapters.yaml"] = sha256_file(paths.chapters)
+        catalog = load_yaml_model(paths.chapters, ChapterCatalog)
+        for ch in catalog.chapters:
+            trans_file = paths.translations / ch.translation_filename
+            if trans_file.is_file():
+                hashes[f"translations/{ch.translation_filename}"] = sha256_file(trans_file)
+    if paths.state.is_file():
+        hashes["state.yaml"] = sha256_file(paths.state)
+    qa_rep = paths.reports / "qa-report.yaml"
+    if qa_rep.is_file():
+        hashes["reports/qa-report.yaml"] = sha256_file(qa_rep)
     return hashes
 
 
@@ -615,21 +637,191 @@ def build_orchestrator_graph(
             "current_chapter_id": chapter_id,
         }
 
-    # 9. QA Node (Extended in Task 12)
+    # 9. QA Node
     def qa_node(state: BookOrchestratorState) -> dict[str, Any]:
+        workspace_root = Path(state["workspace_root"])
+        paths = workspace_paths(workspace_root.parent, workspace_root.name)
+
+        # First check whether the existing qa-approved gate is current
+        qa_gate = check_orchestrator_gate(workspace_root, CheckpointType.QA_APPROVED)
+        if qa_gate.status is OperationStatus.OK:
+            if state["stop_after"] == "qa":
+                return {"status": "completed", "phase": "qa"}
+            return {"phase": "export"}
+
+        # Run deterministic QA check
+        qa_rep_path = paths.reports / "qa-report.yaml"
+        report = run_qa_check(workspace_root)
+        atomic_write_yaml(qa_rep_path, report)
+        if tracer:
+            tracer.add_report_path("reports/qa-report.yaml")
+
+        error_count = report.summary.get("error_count", 0)
+        if error_count > 0:
+            return {
+                "status": "blocked",
+                "error_code": "needs_repair",
+                "error_message": f"QA check found {error_count} critical errors. Review {qa_rep_path}",
+            }
+
+        report_hash = sha256_file(qa_rep_path)
+        evidence_hashes = _compute_qa_evidence_hashes(workspace_root)
+        return {
+            "phase": "qa_decision",
+            "approval_report_path": "reports/qa-report.yaml",
+            "approval_report_hash": report_hash,
+            "approval_evidence_hashes": evidence_hashes,
+        }
+
+    # 10. QA Decision Node (auto policy or interrupt)
+    def qa_decision_node(state: BookOrchestratorState) -> dict[str, Any]:
+        workspace_root = Path(state["workspace_root"])
+        paths = workspace_paths(workspace_root.parent, workspace_root.name)
+        qa_rep_path = paths.reports / "qa-report.yaml"
+        if not qa_rep_path.is_file():
+            return {
+                "status": "blocked",
+                "error_message": "QA report missing before approval decision",
+            }
+        report = load_yaml_model(qa_rep_path, QAReport)
+
+        report_hash = state.get("approval_report_hash") or sha256_file(qa_rep_path)
+        evidence_hashes = state.get("approval_evidence_hashes") or _compute_qa_evidence_hashes(workspace_root)
+
+        auto_approve = config.auto_approve if config else False
+        findings_count = report.summary.get("findings_count", len(report.findings))
+
+        # Auto-approve policy requires ZERO findings (errors or warnings)
+        if auto_approve and findings_count == 0:
+            return {
+                "pending_approval": None,
+                "approval_report_hash": report_hash,
+                "approval_evidence_hashes": evidence_hashes,
+                "phase": "approve_qa",
+            }
+
+        # Interrupt for manual decision (or when auto policy pauses due to findings)
+        interrupt_val = {
+            "type": "qa_approval",
+            "report_path": "reports/qa-report.yaml",
+            "report_hash": report_hash,
+            "evidence_hashes": evidence_hashes,
+            "error_count": report.summary.get("error_count", 0),
+            "warning_count": report.summary.get("warning_count", 0),
+            "findings_count": findings_count,
+        }
+
+        decision = interrupt(interrupt_val)
+
+        # On resume: verify decision
+        approved = False
+        if isinstance(decision, dict):
+            approved = bool(decision.get("approved"))
+        elif isinstance(decision, str) and decision.lower() in {"approve", "approved", "yes"}:
+            approved = True
+
+        if not approved:
+            return {"status": "blocked", "error_message": "QA approval rejected"}
+
+        # Verify evidence has not changed while waiting for decision
+        current_report_hash = sha256_file(qa_rep_path) if qa_rep_path.is_file() else None
+        current_evidence_hashes = _compute_qa_evidence_hashes(workspace_root)
+        if current_report_hash != report_hash or current_evidence_hashes != evidence_hashes:
+            return {
+                "status": "blocked",
+                "pending_approval": None,
+                "error_message": "cannot approve QA: workspace evidence changed during pause",
+            }
+
+        return {
+            "pending_approval": None,
+            "approval_report_hash": report_hash,
+            "approval_evidence_hashes": evidence_hashes,
+            "phase": "approve_qa",
+        }
+
+    # 11. Approve QA Node
+    def approve_qa_node(state: BookOrchestratorState) -> dict[str, Any]:
+        workspace_root = Path(state["workspace_root"])
+        paths = workspace_paths(workspace_root.parent, workspace_root.name)
+        qa_rep_path = paths.reports / "qa-report.yaml"
+        report = load_yaml_model(qa_rep_path, QAReport) if qa_rep_path.is_file() else None
+
+        app_res = approve_current_qa(workspace_root, report=report, allow_warnings=True)
+        if app_res.status is not OperationStatus.OK:
+            return {
+                "status": "blocked",
+                "error_message": f"QA approval failed: {app_res.reason}",
+            }
+
+        gate_res = check_orchestrator_gate(workspace_root, CheckpointType.QA_APPROVED)
+        if gate_res.status is not OperationStatus.OK:
+            return {
+                "status": "blocked",
+                "error_message": f"QA gate check failed after approval: {gate_res.reason}",
+            }
+
         if state["stop_after"] == "qa":
             return {"status": "completed", "phase": "qa"}
         return {"phase": "export"}
 
-    # 10. Export Node (Extended in Task 12)
+    # 12. Export Node
     def export_node(state: BookOrchestratorState) -> dict[str, Any]:
+        workspace_root = Path(state["workspace_root"])
+        paths = workspace_paths(workspace_root.parent, workspace_root.name)
+
+        # 1. Recheck QA gate immediately before export
+        gate_res = check_orchestrator_gate(workspace_root, CheckpointType.QA_APPROVED)
+        if gate_res.status is not OperationStatus.OK:
+            return {
+                "status": "blocked",
+                "error_message": f"Export blocked: QA gate is not approved ({gate_res.reason})",
+            }
+
+        # 2. Get requested formats
+        formats = config.formats if config and config.formats else ["epub", "azw3"]
+
+        # 3. Run export_book
+        export_res = export_book(workspace_root, formats=formats)
+        if export_res.status is not OperationStatus.OK:
+            return {
+                "status": "blocked",
+                "error_message": f"export failed: {export_res.reason}",
+            }
+
+        # 4. Verify every explicitly requested format exists and has size > 0
+        try:
+            metadata = load_yaml_model(paths.book, BookMetadata)
+            slug = metadata.book_slug
+        except Exception as e:
+            return {
+                "status": "blocked",
+                "error_message": f"failed to load book metadata for export verification: {e}",
+            }
+
+        missing_formats = []
+        for fmt in formats:
+            fmt_clean = fmt.lower().strip()
+            export_file = paths.exports / f"{slug}.{fmt_clean}"
+            if not export_file.is_file() or export_file.stat().st_size == 0:
+                missing_formats.append(fmt_clean)
+
+        if missing_formats:
+            return {
+                "status": "blocked",
+                "error_message": (
+                    f"export output file missing or empty for requested format(s): {', '.join(missing_formats)}. "
+                    f"Export detail: {export_res.reason}"
+                ),
+            }
+
         return {"status": "completed", "phase": "export"}
 
-    # 11. Done Node
+    # 13. Done Node
     def done_node(state: BookOrchestratorState) -> dict[str, Any]:
         return {"status": "completed"}
 
-    # 12. Blocked Node
+    # 14. Blocked Node
     def blocked_node(state: BookOrchestratorState) -> dict[str, Any]:
         return {"status": "blocked"}
 
@@ -718,6 +910,26 @@ def build_orchestrator_graph(
             return "done_node"
         if state.get("status") == "blocked":
             return "blocked_node"
+        ph = state.get("phase")
+        if ph == "qa_decision":
+            return "qa_decision_node"
+        if ph == "export":
+            return "export_node"
+        return "blocked_node"
+
+    def route_qa_decision(state: BookOrchestratorState) -> str:
+        if state.get("status") == "blocked":
+            return "blocked_node"
+        ph = state.get("phase")
+        if ph == "approve_qa":
+            return "approve_qa_node"
+        return "blocked_node"
+
+    def route_approve_qa(state: BookOrchestratorState) -> str:
+        if state.get("status") == "completed":
+            return "done_node"
+        if state.get("status") == "blocked":
+            return "blocked_node"
         return "export_node"
 
     def route_export(state: BookOrchestratorState) -> str:
@@ -737,6 +949,8 @@ def build_orchestrator_graph(
     builder.add_node("metadata_node", metadata_node)
     builder.add_node("translate_node", translate_node)
     builder.add_node("qa_node", qa_node)
+    builder.add_node("qa_decision_node", qa_decision_node)
+    builder.add_node("approve_qa_node", approve_qa_node)
     builder.add_node("export_node", export_node)
     builder.add_node("done_node", done_node)
     builder.add_node("blocked_node", blocked_node)
@@ -751,6 +965,8 @@ def build_orchestrator_graph(
     builder.add_conditional_edges("metadata_node", route_metadata)
     builder.add_conditional_edges("translate_node", route_translate)
     builder.add_conditional_edges("qa_node", route_qa)
+    builder.add_conditional_edges("qa_decision_node", route_qa_decision)
+    builder.add_conditional_edges("approve_qa_node", route_approve_qa)
     builder.add_conditional_edges("export_node", route_export)
     builder.add_edge("done_node", END)
     builder.add_edge("blocked_node", END)
@@ -830,7 +1046,7 @@ class GraphRunner:
                 status="paused",
                 run_id=self.config.run_id,
                 selected_span=(self.config.start_at, self.config.stop_after),
-                current_phase=raw_output.get("phase", "crawl_decision"),
+                current_phase=raw_output.get("phase", "qa_decision" if pending_app == "qa_approval" else "crawl_decision"),
                 pending_approval=pending_app,
                 approval_report_path=rep_path,
                 approval_report_hash=rep_hash,
