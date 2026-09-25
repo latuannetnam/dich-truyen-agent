@@ -3,14 +3,16 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from dich_truyen_agent.checkpoints import approve_checkpoint, check_gate
+from dich_truyen_agent.checkpoints import (
+    approve_checkpoint,
+    approve_current_qa,
+    approve_full_crawl,
+    check_gate,
+)
 from dich_truyen_agent.models import (
-    ApprovalScope,
     BookMetadata,
-    BookState,
     ChapterCatalog,
     CheckpointType,
-    CrawlSettings,
     OperationResult,
     OperationStatus,
     GlossaryTerm,
@@ -140,6 +142,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     app_qa = subparsers.add_parser("approve-qa")
     app_qa.add_argument("--workspace", type=Path, required=True)
+    app_qa.add_argument("--allow-warnings", action="store_true", help="Allow QA approval with warnings (partial scope)")
 
     # Phase 6 Export Commands
     export_cmd = subparsers.add_parser("export-book")
@@ -250,55 +253,7 @@ def run_command(args: argparse.Namespace) -> OperationResult:
                 reason=f"crawl profile promotion failed: {e}",
             )
     elif args.command == "approve-crawl":
-        from dich_truyen_agent.storage import load_yaml_model
-        from dich_truyen_agent.crawl_profiles import load_active_crawl_profile
-        from dich_truyen_agent.crawl_reports import build_crawl_report, approval_blockers
-        
-        try:
-            paths = workspace_paths(args.workspace.parent, args.workspace.name)
-            metadata = load_yaml_model(paths.book, BookMetadata)
-            profile_source = load_active_crawl_profile(PROJECT_ROOT, args.workspace, metadata.source_url)
-            
-            settings = CrawlSettings(max_chapters=args.max_chapters)
-            report = build_crawl_report(args.workspace, profile_source.profile, settings)
-            
-            blockers = approval_blockers(report)
-            if blockers:
-                result = OperationResult(
-                    status=OperationStatus.BLOCKED,
-                    reason=f"crawl approval blocked due to findings: {blockers}",
-                    report_paths=[str(paths.crawl_report)],
-                )
-            else:
-                # Save the crawl report
-                atomic_write_yaml(paths.crawl_report, report)
-                
-                # Evidence hashing
-                catalog = load_yaml_model(paths.chapters, ChapterCatalog)
-                state = load_yaml_model(paths.state, BookState)
-                target_chapters = catalog.chapters
-                if args.max_chapters > 0:
-                    target_chapters = catalog.chapters[:args.max_chapters]
-                    
-                evidence = ["reports/crawl.yaml"]
-                state_by_id = {ch.chapter_id: ch for ch in state.chapters}
-                for tc in target_chapters:
-                    c_state = state_by_id.get(tc.chapter_id)
-                    if c_state and c_state.raw.canonical_path:
-                        evidence.append(c_state.raw.canonical_path)
-                
-                result = approve_checkpoint(
-                    workspace_root=args.workspace,
-                    checkpoint_type=CheckpointType.CRAWL_APPROVED,
-                    report_path="reports/crawl.yaml",
-                    evidence_paths=evidence,
-                    scope=report.scope,
-                )
-        except Exception as e:
-            result = OperationResult(
-                status=OperationStatus.ERROR,
-                reason=f"crawl approval failed: {e}",
-            )
+        result = approve_full_crawl(args.workspace)
     elif args.command == "generate-glossary":
         from dich_truyen_agent.glossary import initialize_glossary_file
         import yaml
@@ -485,48 +440,8 @@ def run_command(args: argparse.Namespace) -> OperationResult:
                 reason=f"Check translation failed: {e}",
             )
     elif args.command == "approve-qa":
-        from dich_truyen_agent.qa import run_qa_check
-        from dich_truyen_agent.storage import load_yaml_model
-        
-        try:
-            paths = workspace_paths(args.workspace.parent, args.workspace.name)
-            qa_report_path = paths.reports / "qa-report.yaml"
-            
-            # Load or run QA check
-            if qa_report_path.is_file():
-                from dich_truyen_agent.models import QAReport
-                report = load_yaml_model(qa_report_path, QAReport)
-            else:
-                report = run_qa_check(args.workspace)
-                atomic_write_yaml(qa_report_path, report)
-                
-            if report.summary["error_count"] > 0:
-                result = OperationResult(
-                    status=OperationStatus.BLOCKED,
-                    reason=f"QA approval blocked: workspace contains {report.summary['error_count']} critical errors. Run main.py check-translation for details.",
-                    report_paths=[str(qa_report_path.resolve().relative_to(args.workspace.resolve()).as_posix())],
-                )
-            else:
-                # Evidence hashing: all translation files in Chapters catalog
-                catalog = load_yaml_model(paths.chapters, ChapterCatalog)
-                evidence = [str(qa_report_path.resolve().relative_to(args.workspace.resolve()).as_posix())]
-                for entry in catalog.chapters:
-                    trans_file = paths.translations / entry.translation_filename
-                    if trans_file.is_file():
-                        evidence.append(str(trans_file.resolve().relative_to(args.workspace.resolve()).as_posix()))
-                        
-                result = approve_checkpoint(
-                    workspace_root=args.workspace,
-                    checkpoint_type=CheckpointType.QA_APPROVED,
-                    report_path=str(qa_report_path.resolve().relative_to(args.workspace.resolve()).as_posix()),
-                    evidence_paths=evidence,
-                    scope=ApprovalScope.FULL if report.summary["findings_count"] == 0 else ApprovalScope.PARTIAL,
-                )
-        except Exception as e:
-            result = OperationResult(
-                status=OperationStatus.ERROR,
-                reason=f"QA approval failed: {e}",
-            )
+        allow_warnings = getattr(args, "allow_warnings", False)
+        result = approve_current_qa(args.workspace, allow_warnings=allow_warnings)
     elif args.command == "export-book":
         from dich_truyen_agent.export import export_book
         

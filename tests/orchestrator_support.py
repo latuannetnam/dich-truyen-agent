@@ -4,13 +4,15 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
-from dich_truyen_agent.checkpoints import approve_checkpoint
+from dich_truyen_agent.checkpoints import approve_checkpoint, approve_full_crawl
 from dich_truyen_agent.models import (
+    ApprovalScope,
     BookMetadata,
     BookState,
     ChapterCatalog,
     ChapterCatalogEntry,
     CheckpointType,
+    CrawlReport,
     StageRecord,
     StageStatus,
     TranslationStyle,
@@ -163,17 +165,68 @@ def build_crawl_approved_workspace(
         )
     atomic_write_yaml(wf.state, state)
 
-    # Write report and approve crawl checkpoint
+    # Write report and approve crawl checkpoint using approve_full_crawl
     wf.report.parent.mkdir(parents=True, exist_ok=True)
-    wf.report.write_text("crawl report ok", encoding="utf-8")
-    approve_checkpoint(
-        wf.root,
-        CheckpointType.CRAWL_APPROVED,
-        "reports/crawl.yaml",
-        rel_raws,
+    report = CrawlReport(
+        schema_version=1,
+        discovered_count=chapter_count,
+        selected_count=chapter_count,
+        completed_count=chapter_count,
+        failed_count=0,
+        max_chapters=0,
+        scope=ApprovalScope.FULL,
+        active_profile_source="shared_template",
+        blockers=[],
+        warnings=[],
+        chapter_lengths={str(i): 100 for i in range(1, chapter_count + 1)},
+        suspicious_residue_findings={},
+        excerpts={},
     )
+    approve_full_crawl(wf.root, report)
 
     return wf
+
+
+def build_full_crawl_workspace(
+    tmp_path: Path,
+    *,
+    chapter_count: int = 2,
+    slug: str = "test-book",
+) -> WorkspaceFixture:
+    wf = build_initialized_workspace(tmp_path, chapter_count=chapter_count, slug=slug)
+    state = wf.reload_state()
+    for i, raw_file in enumerate(wf.raw_paths, start=1):
+        raw_file.write_text(
+            f"Raw content for chapter {i} with sufficient text to pass validation length check.\n" * 5,
+            encoding="utf-8",
+        )
+        rel_raw = f"raw/{raw_file.name}"
+        state.chapters[i - 1].raw = StageRecord(
+            status=StageStatus.COMPLETED,
+            canonical_path=rel_raw,
+            sha256=sha256_file(raw_file),
+            updated_at=datetime.now(UTC),
+        )
+    atomic_write_yaml(wf.state, state)
+
+    report = CrawlReport(
+        schema_version=1,
+        discovered_count=chapter_count,
+        selected_count=chapter_count,
+        completed_count=chapter_count,
+        failed_count=0,
+        max_chapters=0,
+        scope=ApprovalScope.FULL,
+        active_profile_source="shared_template",
+        blockers=[],
+        warnings=[],
+        chapter_lengths={str(i): 100 for i in range(1, chapter_count + 1)},
+        suspicious_residue_findings={},
+        excerpts={},
+    )
+    atomic_write_yaml(wf.report, report)
+    return wf
+
 
 
 def build_translated_workspace(

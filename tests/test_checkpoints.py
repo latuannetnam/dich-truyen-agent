@@ -2,19 +2,26 @@ from pathlib import Path
 
 import pytest
 
-from dich_truyen_agent.checkpoints import approve_checkpoint, check_gate, require_checkpoint_scope
+from dich_truyen_agent.checkpoints import (
+    approve_checkpoint,
+    approve_full_crawl,
+    check_gate,
+    require_checkpoint_scope,
+)
 from dich_truyen_agent.models import (
     ApprovalScope,
     BookMetadata,
     ChapterCatalog,
     CheckpointRecord,
     CheckpointType,
+    CrawlReport,
     OperationStatus,
     TranslationStyle,
 )
 from dich_truyen_agent.paths import workspace_paths
 from dich_truyen_agent.storage import load_yaml_model
 from dich_truyen_agent.workspace import initialize_workspace
+from orchestrator_support import WorkspaceFixture, build_full_crawl_workspace
 
 
 @pytest.fixture
@@ -130,3 +137,71 @@ def test_checkpoint_scope_verification(workspace_root: Path) -> None:
 
     # Full scope requirement is allowed on full checkpoint
     assert require_checkpoint_scope(workspace_root, CheckpointType.CRAWL_APPROVED, ApprovalScope.FULL).status is OperationStatus.OK
+
+
+@pytest.fixture
+def full_crawl_workspace(tmp_path: Path) -> WorkspaceFixture:
+    return build_full_crawl_workspace(tmp_path, chapter_count=2)
+
+
+def test_new_crawl_gate_tracks_catalog_not_mutable_state(full_crawl_workspace: WorkspaceFixture) -> None:
+    report = load_yaml_model(full_crawl_workspace.report, CrawlReport)
+    result = approve_full_crawl(full_crawl_workspace.root, report)
+    assert result.status is OperationStatus.OK
+    full_crawl_workspace.promote_first_translation()
+    assert check_gate(full_crawl_workspace.root, CheckpointType.CRAWL_APPROVED).status is OperationStatus.OK
+
+
+def test_approve_full_crawl_rejects_empty_catalog(tmp_path: Path) -> None:
+    wf = build_full_crawl_workspace(tmp_path, chapter_count=0)
+    report = load_yaml_model(wf.report, CrawlReport)
+    result = approve_full_crawl(wf.root, report)
+    assert result.status is OperationStatus.BLOCKED
+    assert "discovered" in result.reason.lower() or "catalog" in result.reason.lower() or "0" in result.reason
+
+
+def test_approve_full_crawl_rejects_partial_crawl(full_crawl_workspace: WorkspaceFixture) -> None:
+    report = load_yaml_model(full_crawl_workspace.report, CrawlReport)
+    report.scope = ApprovalScope.PARTIAL
+    report.max_chapters = 1
+    result = approve_full_crawl(full_crawl_workspace.root, report)
+    assert result.status is OperationStatus.BLOCKED
+    assert "full" in result.reason.lower() or "partial" in result.reason.lower()
+
+
+def test_approve_full_crawl_rejects_missing_raw_chapter(full_crawl_workspace: WorkspaceFixture) -> None:
+    report = load_yaml_model(full_crawl_workspace.report, CrawlReport)
+    full_crawl_workspace.raw_paths[0].unlink()
+    result = approve_full_crawl(full_crawl_workspace.root, report)
+    assert result.status is OperationStatus.BLOCKED
+    assert "missing" in result.reason.lower() or "raw" in result.reason.lower()
+
+
+def test_approve_full_crawl_rejects_blockers(full_crawl_workspace: WorkspaceFixture) -> None:
+    report = load_yaml_model(full_crawl_workspace.report, CrawlReport)
+    report.blockers = ["Chapter 1 body is corrupt"]
+    result = approve_full_crawl(full_crawl_workspace.root, report)
+    assert result.status is OperationStatus.BLOCKED
+    assert "blocked" in result.reason.lower() or "findings" in result.reason.lower()
+
+
+def test_orchestrator_gate_blocks_old_approval_missing_catalog(workspace_root: Path) -> None:
+    report = workspace_root / "reports" / "crawl.yaml"
+    evidence = workspace_root / "raw" / "0001.txt"
+    report.parent.mkdir(parents=True, exist_ok=True)
+    evidence.parent.mkdir(parents=True, exist_ok=True)
+    report.write_text("review", encoding="utf-8")
+    evidence.write_text("body", encoding="utf-8")
+
+    approve_checkpoint(
+        workspace_root,
+        CheckpointType.CRAWL_APPROVED,
+        "reports/crawl.yaml",
+        ["raw/0001.txt"],
+    )
+
+    result = check_gate(workspace_root, CheckpointType.CRAWL_APPROVED, strict=True)
+    assert result.status is OperationStatus.BLOCKED
+    assert "chapters.yaml" in result.reason
+    assert "regenerat" in result.reason.lower() or "re-approval" in result.reason.lower()
+

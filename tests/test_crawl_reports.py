@@ -117,3 +117,26 @@ def test_build_crawl_report_with_residue(workspace_with_raw: Path) -> None:
     assert "script_residue" in report.suspicious_residue_findings["1"]
     assert "cloudflare_markers" in report.suspicious_residue_findings["1"]
     assert len(report.warnings) > 0
+
+
+def test_build_crawl_report_empty_catalog(books_root: Path, style) -> None:
+    metadata = BookMetadata(
+        book_slug="empty-book",
+        source_url="https://www.piaotia.com/html/8/8717/index.html",
+        title="Empty Book",
+    )
+    catalog = ChapterCatalog(chapters=[])
+    initialize_workspace(books_root, metadata, catalog, style)
+    paths = workspace_paths(books_root, metadata.book_slug)
+    profile = CrawlProfile(
+        domain="www.piaotia.com",
+        index=CrawlIndexProfile(chapter_link_selector=".chapters a"),
+        chapter=CrawlChapterProfile(title_selector="h1", content_selector="#content"),
+        encoding=CrawlEncodingProfile(index="gbk", chapter="gbk"),
+        validation=CrawlValidationProfile(min_chapter_characters=50),
+    )
+    report = build_crawl_report(paths.root, profile, CrawlSettings(max_chapters=0))
+    assert report.discovered_count == 0
+    assert len(report.blockers) > 0
+    assert any("no discovered chapters" in b for b in report.blockers)
+

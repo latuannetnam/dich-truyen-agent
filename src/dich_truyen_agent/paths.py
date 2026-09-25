@@ -7,6 +7,18 @@ from pathlib import Path
 from uuid import uuid4
 
 
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+
+
+def find_project_root(start_path: Path | None = None) -> Path:
+    if start_path is not None:
+        p = Path(start_path).resolve()
+        for parent in [p] + list(p.parents):
+            if (parent / "pyproject.toml").is_file():
+                return parent
+    return PROJECT_ROOT
+
+
 @dataclass(frozen=True)
 class WorkspacePaths:
     root: Path

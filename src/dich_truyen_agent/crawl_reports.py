@@ -50,6 +50,9 @@ def build_crawl_report(
     residue_findings = {}
     excerpts = {}
 
+    if discovered_count == 0:
+        blockers.append("catalog contains no discovered chapters")
+
     # Catalog validation checks
     discovered_chapters = []
     # Rebuild discovered chapters mock list for validation
@@ -196,4 +199,12 @@ def build_crawl_report(
 
 def approval_blockers(report: CrawlReport) -> list[str]:
     """Extract blockers that refuse crawl approval."""
-    return report.blockers
+    blockers = list(report.blockers)
+    if report.discovered_count == 0 and "catalog contains no discovered chapters" not in blockers:
+        blockers.append("catalog contains no discovered chapters")
+    if report.scope != ApprovalScope.FULL:
+        blockers.append(f"full crawl scope required for approval, got {report.scope.value}")
+    if report.selected_count != report.discovered_count or report.completed_count != report.discovered_count:
+        blockers.append(f"incomplete crawl: {report.completed_count}/{report.discovered_count} chapters completed")
+    return blockers
+

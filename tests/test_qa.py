@@ -449,8 +449,122 @@ def test_cli_check_and_approve_qa(qa_workspace: Path, capsys) -> None:
     checkpoint = load_yaml_model(qa_workspace / "checkpoints" / "qa-approved.yaml", CheckpointRecord)
     assert checkpoint.checkpoint_type == CheckpointType.QA_APPROVED
     assert set(checkpoint.evidence_hashes.keys()) == {
+        "chapters.yaml",
+        "state.yaml",
         "reports/qa-report.yaml",
         "translations/0001-c1.txt",
         "translations/0002-c2.txt",
     }
+
+
+def test_approve_current_qa_rejects_errors(qa_workspace: Path) -> None:
+    from dich_truyen_agent.checkpoints import approve_current_qa
+    from dich_truyen_agent.models import QAReport
+    report = QAReport(
+        summary={"error_count": 2, "warning_count": 0, "findings_count": 2},
+        findings=[],
+    )
+    result = approve_current_qa(qa_workspace, report)
+    assert result.status is OperationStatus.BLOCKED
+    assert "critical errors" in result.reason.lower() or "error" in result.reason.lower()
+
+
+def test_approve_current_qa_rejects_warnings_without_allow_warnings(qa_workspace: Path) -> None:
+    from dich_truyen_agent.checkpoints import approve_current_qa
+    from dich_truyen_agent.models import QAReport, QAFinding, QAFindingType
+    report = QAReport(
+        summary={"error_count": 0, "warning_count": 1, "findings_count": 1},
+        findings=[
+            QAFinding(
+                chapter_id=1,
+                finding_type=QAFindingType.LENGTH,
+                severity="warning",
+                message="Length mismatch",
+            )
+        ],
+    )
+    result = approve_current_qa(qa_workspace, report, allow_warnings=False)
+    assert result.status is OperationStatus.BLOCKED
+    assert "allow_warnings" in result.reason or "findings" in result.reason
+
+
+def test_approve_current_qa_allows_warnings_with_allow_warnings(qa_workspace: Path) -> None:
+    from dich_truyen_agent.checkpoints import approve_current_qa
+    from dich_truyen_agent.models import (
+        ApprovalScope,
+        CheckpointRecord,
+        QAFinding,
+        QAFindingType,
+        QAReport,
+    )
+    paths = workspace_paths(qa_workspace.parent, qa_workspace.name)
+    (paths.raw / "0001-c1.txt").write_text("Raw 1", encoding="utf-8")
+    (paths.raw / "0002-c2.txt").write_text("Raw 2", encoding="utf-8")
+    (paths.translations / "0001-c1.txt").write_text("Dịch 1", encoding="utf-8")
+    (paths.translations / "0002-c2.txt").write_text("Dịch 2", encoding="utf-8")
+
+    report = QAReport(
+        summary={"error_count": 0, "warning_count": 1, "findings_count": 1},
+        findings=[
+            QAFinding(
+                chapter_id=1,
+                finding_type=QAFindingType.LENGTH,
+                severity="warning",
+                message="Length mismatch",
+            )
+        ],
+    )
+    result = approve_current_qa(qa_workspace, report, allow_warnings=True)
+    assert result.status is OperationStatus.OK
+    checkpoint = load_yaml_model(qa_workspace / "checkpoints" / "qa-approved.yaml", CheckpointRecord)
+    assert checkpoint.scope == ApprovalScope.PARTIAL
+
+
+def test_qa_evidence_tracks_catalog_state_report_and_translations(qa_workspace: Path) -> None:
+    from dich_truyen_agent.checkpoints import approve_current_qa, check_gate
+    from dich_truyen_agent.models import QAReport
+    paths = workspace_paths(qa_workspace.parent, qa_workspace.name)
+    (paths.raw / "0001-c1.txt").write_text("Raw 1", encoding="utf-8")
+    (paths.raw / "0002-c2.txt").write_text("Raw 2", encoding="utf-8")
+    (paths.translations / "0001-c1.txt").write_text("Dịch 1", encoding="utf-8")
+    (paths.translations / "0002-c2.txt").write_text("Dịch 2", encoding="utf-8")
+
+    report = QAReport(
+        summary={"error_count": 0, "warning_count": 0, "findings_count": 0},
+        findings=[],
+    )
+
+    res = approve_current_qa(qa_workspace, report, allow_warnings=False)
+    assert res.status is OperationStatus.OK
+    assert check_gate(qa_workspace, CheckpointType.QA_APPROVED).status is OperationStatus.OK
+
+    # 1. Mutate chapters.yaml -> blocked
+    orig_catalog = paths.chapters.read_bytes()
+    paths.chapters.write_bytes(orig_catalog + b"\n# mutated")
+    assert check_gate(qa_workspace, CheckpointType.QA_APPROVED).status is OperationStatus.BLOCKED
+    paths.chapters.write_bytes(orig_catalog)
+    assert check_gate(qa_workspace, CheckpointType.QA_APPROVED).status is OperationStatus.OK
+
+    # 2. Mutate state.yaml -> blocked
+    orig_state = paths.state.read_bytes()
+    paths.state.write_bytes(orig_state + b"\n# mutated")
+    assert check_gate(qa_workspace, CheckpointType.QA_APPROVED).status is OperationStatus.BLOCKED
+    paths.state.write_bytes(orig_state)
+    assert check_gate(qa_workspace, CheckpointType.QA_APPROVED).status is OperationStatus.OK
+
+    # 3. Mutate qa-report.yaml -> blocked
+    qa_rep_path = paths.reports / "qa-report.yaml"
+    orig_rep = qa_rep_path.read_bytes()
+    qa_rep_path.write_bytes(orig_rep + b"\n# mutated")
+    assert check_gate(qa_workspace, CheckpointType.QA_APPROVED).status is OperationStatus.BLOCKED
+    qa_rep_path.write_bytes(orig_rep)
+    assert check_gate(qa_workspace, CheckpointType.QA_APPROVED).status is OperationStatus.OK
+
+    # 4. Mutate a translation file -> blocked
+    trans1 = paths.translations / "0001-c1.txt"
+    orig_trans = trans1.read_bytes()
+    trans1.write_bytes(b"Mutated translation text")
+    assert check_gate(qa_workspace, CheckpointType.QA_APPROVED).status is OperationStatus.BLOCKED
+    trans1.write_bytes(orig_trans)
+    assert check_gate(qa_workspace, CheckpointType.QA_APPROVED).status is OperationStatus.OK
 
