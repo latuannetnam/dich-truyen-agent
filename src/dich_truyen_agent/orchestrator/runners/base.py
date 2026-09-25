@@ -53,6 +53,6 @@ def resolve_model_for_phase(
     Global model applies to metadata, profile repair, and translation.
     Translation override changes chapter translation only.
     """
-    if phase == "translate":
+    if phase in ("translate", "chapter_translation"):
         return translation_model if translation_model is not None else global_model
     return global_model

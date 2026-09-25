@@ -134,9 +134,9 @@ class AgyRunner:
 
         # 2. Select agent persona based on phase
         agent_name: str | None = None
-        if phase == "translate":
+        if phase in ("translate", "chapter_translation"):
             agent_name = "ag_translator"
-        elif phase == "metadata":
+        elif phase in ("metadata", "metadata_translation"):
             agent_name = "ag_metadata_translator"
 
         # 3. Build command vector

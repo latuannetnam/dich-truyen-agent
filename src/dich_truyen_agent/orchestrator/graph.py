@@ -27,12 +27,20 @@ from dich_truyen_agent.models import (
 )
 from dich_truyen_agent.orchestrator.attempts import AttemptJournal
 from dich_truyen_agent.orchestrator.models import OrchestratorConfig, RunOutcome, RunSummary
+from dich_truyen_agent.orchestrator.runners import resolve_model_for_phase
 from dich_truyen_agent.orchestrator.runners.base import HarnessRunner
 from dich_truyen_agent.orchestrator.state import BookOrchestratorState
 from dich_truyen_agent.orchestrator.tracer import ActivityTracer
 from dich_truyen_agent.orchestrator.workspace_ops import WorkspaceOps
 from dich_truyen_agent.paths import workspace_paths
 from dich_truyen_agent.storage import atomic_write_yaml, load_yaml_model, sha256_file
+from dich_truyen_agent.workspace import (
+    get_staging_paths,
+    next_translation_work_item,
+    promote_chapter_translation,
+    recover_chapter_promotion,
+    verify_staged_chapter,
+)
 
 
 def _compute_crawl_evidence_hashes(workspace_root: Path) -> dict[str, str]:
@@ -361,16 +369,251 @@ def build_orchestrator_graph(
 
     # 7. Metadata Node
     def metadata_node(state: BookOrchestratorState) -> dict[str, Any]:
-        # Advance to translate
+        workspace_root = Path(state["workspace_root"])
+        paths = workspace_paths(workspace_root.parent, workspace_root.name)
+        if not paths.book.is_file():
+            return {"status": "blocked", "error_message": "book.yaml missing"}
+        metadata = load_yaml_model(paths.book, BookMetadata)
+
+        needs_translation = not metadata.translated_title or (metadata.author and not metadata.translated_author)
+        if needs_translation:
+            model = (
+                resolve_model_for_phase(
+                    "metadata_translation",
+                    global_model=config.global_model,
+                    translation_model=config.translation_model,
+                )
+                if config
+                else None
+            )
+            prompt = (
+                f"Translate novel metadata in book.yaml for book: {metadata.title}\n"
+                f"Path to book.yaml: {paths.book}\n"
+                f"Source title: {metadata.title}\n"
+                f"Source author: {metadata.author or 'Unknown'}\n"
+                "Please update book.yaml with translated_title and translated_author in Vietnamese.\n"
+                "Do NOT modify chapters.yaml or state.yaml.\n"
+            )
+            runner.run_phase(
+                phase="metadata_translation",
+                workspace=workspace_root,
+                prompt=prompt,
+                model=model,
+                timeout_seconds=600,
+            )
+            # Recheck metadata
+            try:
+                metadata = load_yaml_model(paths.book, BookMetadata)
+            except Exception as e:
+                return {"status": "blocked", "error_message": f"failed to reload book.yaml after metadata translation: {e}"}
+            if not metadata.translated_title:
+                return {"status": "blocked", "error_message": "metadata translation failed: translated_title is empty"}
+
         if state["stop_after"] == "metadata":
             return {"status": "completed", "phase": "metadata"}
         return {"phase": "translate"}
 
-    # 8. Translate Node (Extended in Task 11)
+    # 8. Translate Node
     def translate_node(state: BookOrchestratorState) -> dict[str, Any]:
-        if state["stop_after"] == "translate":
-            return {"status": "completed", "phase": "translate"}
-        return {"phase": "qa"}
+        workspace_root = Path(state["workspace_root"])
+        paths = workspace_paths(workspace_root.parent, workspace_root.name)
+        run_id = state["run_id"]
+        run_dir = Path(state["run_dir"])
+
+        if journal is None:
+            active_journal = AttemptJournal(run_dir / "attempts.json")
+        else:
+            active_journal = journal
+
+        batch_size = config.batch_size if config else 5
+        translated_in_batch = 0
+
+        while translated_in_batch < batch_size:
+            # 1. First recover any pending promotion journal from a prior interrupted write
+            catalog = load_yaml_model(paths.chapters, ChapterCatalog)
+            for ch in catalog.chapters:
+                j_file = paths.reports / f"promotion-journal-{ch.chapter_id}.yaml"
+                if j_file.is_file():
+                    rec_res = recover_chapter_promotion(workspace_root, ch.chapter_id)
+                    if rec_res.status is not OperationStatus.OK:
+                        return {"status": "blocked", "error_message": f"promotion recovery failed for chapter {ch.chapter_id}: {rec_res.reason}"}
+
+            # 2. Get next translation work item
+            work_res = next_translation_work_item(workspace_root, run_id=run_id, attempt=1)
+            if work_res.status is not OperationStatus.OK:
+                return {"status": "blocked", "error_message": work_res.reason}
+
+            work_data = work_res.data
+            if work_data.get("state") == "completed":
+                # All chapters are translated!
+                if state["stop_after"] == "translate":
+                    return {"status": "completed", "phase": "translate"}
+                return {"phase": "qa"}
+
+            chapter_id = work_data.get("chapter_id")
+            if chapter_id is None:
+                return {"status": "blocked", "error_message": "no chapter_id in next translation work item"}
+
+            # Predecessor check: strictly enforce valid completed predecessor for chapter > 1
+            if chapter_id > 1:
+                if work_data.get("is_fallback"):
+                    return {
+                        "status": "blocked",
+                        "error_message": f"missing predecessor translation context for chapter {chapter_id}",
+                    }
+                prev_path_str = work_data.get("prev_translation_path")
+                if not prev_path_str or not Path(prev_path_str).is_file():
+                    return {
+                        "status": "blocked",
+                        "error_message": f"predecessor translation file missing for chapter {chapter_id}: {prev_path_str}",
+                    }
+                # Check predecessor hash against state.yaml
+                bstate = load_yaml_model(paths.state, BookState)
+                prev_ch = next((c for c in bstate.chapters if c.chapter_id == chapter_id - 1), None)
+                if not prev_ch or prev_ch.translation.status is not StageStatus.COMPLETED:
+                    return {
+                        "status": "blocked",
+                        "error_message": f"preceding chapter {chapter_id - 1} translation status is not COMPLETED in state.yaml",
+                    }
+                if sha256_file(Path(prev_path_str)) != prev_ch.translation.sha256:
+                    return {
+                        "status": "blocked",
+                        "error_message": f"predecessor translation hash mismatch for chapter {chapter_id - 1}",
+                    }
+
+            # 3. Translation attempt loop (up to 3 attempts with bounded retry)
+            chapter_promoted = False
+            last_err = None
+
+            while not chapter_promoted:
+                try:
+                    attempt = active_journal.reserve(run_id, f"chapter_{chapter_id}", limit=3)
+                except RuntimeError as err:
+                    return {
+                        "status": "blocked",
+                        "error_message": f"chapter {chapter_id} retry budget exhausted: {err}",
+                    }
+
+                staged_txt, staged_yaml = get_staging_paths(
+                    paths, chapter_id, run_id=run_id, attempt=attempt
+                )
+                staged_txt.parent.mkdir(parents=True, exist_ok=True)
+
+                # Snapshot protected hashes
+                protected_hashes = {
+                    "book.yaml": sha256_file(paths.book) if paths.book.is_file() else None,
+                    "chapters.yaml": sha256_file(paths.chapters) if paths.chapters.is_file() else None,
+                    "state.yaml": sha256_file(paths.state) if paths.state.is_file() else None,
+                    "style.yaml": sha256_file(paths.style) if paths.style.is_file() else None,
+                }
+                # Also snapshot any existing translated files in translations/
+                if paths.translations.is_dir():
+                    for f in paths.translations.glob("*.txt"):
+                        protected_hashes[f"translations/{f.name}"] = sha256_file(f)
+
+                # Build prompt with absolute paths only (never raw/translated text)
+                prompt = (
+                    f"Translate chapter {chapter_id}: {work_data.get('original_title', '')}\n"
+                    f"chapter_id: {chapter_id}\n"
+                    f"raw_path: {work_data.get('raw_path')}\n"
+                    f"style_path: {work_data.get('style_path')}\n"
+                    f"glossary_path: {work_data.get('glossary_path')}\n"
+                    f"glossary_context_path: {work_data.get('glossary_context_path')}\n"
+                    f"prev_translation_path: {work_data.get('prev_translation_path')}\n"
+                    f"staged_txt: {staged_txt}\n"
+                    f"staged_yaml: {staged_yaml}\n"
+                    "Translate the chapter from raw_path into staged_txt.\n"
+                    "Optional glossary additions may be proposed in staged_yaml.\n"
+                    "Do NOT modify book.yaml, chapters.yaml, state.yaml, or any existing files in translations/.\n"
+                )
+
+                model = (
+                    resolve_model_for_phase(
+                        "chapter_translation",
+                        global_model=config.global_model,
+                        translation_model=config.translation_model,
+                    )
+                    if config
+                    else None
+                )
+                timeout = config.translation_timeout_seconds if config else 1800
+                runner.run_phase(
+                    phase="chapter_translation",
+                    workspace=workspace_root,
+                    prompt=prompt,
+                    model=model,
+                    timeout_seconds=timeout,
+                )
+
+                # Check for unauthorized mutations
+                for rel_p, orig_h in protected_hashes.items():
+                    f_path = paths.root / rel_p
+                    curr_h = sha256_file(f_path) if f_path.is_file() else None
+                    if curr_h != orig_h:
+                        return {
+                            "status": "blocked",
+                            "error_message": f"unauthorized workspace mutation detected in {rel_p} during translation",
+                        }
+
+                # Verify staging
+                verify_res = verify_staged_chapter(
+                    workspace_root,
+                    chapter_id,
+                    run_id=run_id,
+                    attempt=attempt,
+                    staged_txt_path=staged_txt,
+                )
+                if verify_res.status is not OperationStatus.OK:
+                    last_err = verify_res.reason
+                    if active_journal.get_attempts(run_id, f"chapter_{chapter_id}") >= 3:
+                        return {
+                            "status": "blocked",
+                            "error_message": f"chapter {chapter_id} staging verification failed: {last_err}",
+                        }
+                    continue
+
+                # Promote
+                prom_res = promote_chapter_translation(
+                    workspace_root,
+                    chapter_id,
+                    run_id=run_id,
+                    attempt=attempt,
+                    staged_txt_path=staged_txt,
+                    staged_yaml_path=staged_yaml,
+                )
+                if prom_res.status is not OperationStatus.OK:
+                    return {
+                        "status": "blocked",
+                        "error_message": f"chapter {chapter_id} promotion failed: {prom_res.reason}",
+                    }
+
+                chapter_promoted = True
+                translated_in_batch += 1
+                if tracer:
+                    tracer.record_invocation(
+                        {
+                            "phase": "chapter_translation",
+                            "chapter_id": chapter_id,
+                            "attempt": attempt,
+                            "status": "promoted",
+                        }
+                    )
+
+            # End of chapter translation
+
+        # Batch completed: check if more chapters remain
+        work_res = next_translation_work_item(workspace_root, run_id=run_id, attempt=1)
+        if work_res.status is OperationStatus.OK and work_res.data.get("state") == "completed":
+            if state["stop_after"] == "translate":
+                return {"status": "completed", "phase": "translate"}
+            return {"phase": "qa"}
+
+        # More chapters remain: yield checkpoint to LangGraph and continue in next batch
+        return {
+            "phase": "translate",
+            "batch_index": state.get("batch_index", 0) + 1,
+            "current_chapter_id": chapter_id,
+        }
 
     # 9. QA Node (Extended in Task 12)
     def qa_node(state: BookOrchestratorState) -> dict[str, Any]:
@@ -466,6 +709,8 @@ def build_orchestrator_graph(
             return "done_node"
         if state.get("status") == "blocked":
             return "blocked_node"
+        if state.get("phase") == "translate":
+            return "translate_node"
         return "qa_node"
 
     def route_qa(state: BookOrchestratorState) -> str:

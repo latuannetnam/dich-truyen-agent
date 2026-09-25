@@ -24,6 +24,7 @@ class OrchestratorConfig(BaseModel):
     batch_size: int = 5
     timeout_seconds: int = 1800
     crawl_timeout_seconds: int = 1800
+    translation_timeout_seconds: int = 1800
     qa_timeout_seconds: int = 600
     export_timeout_seconds: int = 600
     max_repair_attempts: int = 3
@@ -62,6 +63,7 @@ class OrchestratorConfig(BaseModel):
         "batch_size",
         "timeout_seconds",
         "crawl_timeout_seconds",
+        "translation_timeout_seconds",
         "qa_timeout_seconds",
         "export_timeout_seconds",
         "max_repair_attempts",

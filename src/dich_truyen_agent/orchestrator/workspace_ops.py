@@ -334,3 +334,45 @@ class WorkspaceOps:
             status=OperationStatus.ERROR,
             reason=proc_res.failure_detail or f"crawl process exited with code {proc_res.exit_code}",
         )
+
+    def get_next_translation(
+        self,
+        workspace_root: Path,
+        *,
+        run_id: str | None = None,
+        attempt: int | None = None,
+    ) -> OperationResult:
+        """Query next translation work item."""
+        return next_translation_work_item(workspace_root, run_id=run_id, attempt=attempt)
+
+    def promote_translation(
+        self,
+        workspace_root: Path,
+        chapter_id: int,
+        *,
+        run_id: str | None = None,
+        attempt: int | None = None,
+        staged_txt_path: Path | None = None,
+        staged_yaml_path: Path | None = None,
+    ) -> OperationResult:
+        """Promote staged translation into canonical chapter file."""
+        from dich_truyen_agent.workspace import promote_chapter_translation
+
+        return promote_chapter_translation(
+            workspace_root,
+            chapter_id,
+            run_id=run_id,
+            attempt=attempt,
+            staged_txt_path=staged_txt_path,
+            staged_yaml_path=staged_yaml_path,
+        )
+
+    def recover_promotion(
+        self,
+        workspace_root: Path,
+        chapter_id: int,
+    ) -> OperationResult:
+        """Recover an interrupted chapter promotion using promotion journal."""
+        from dich_truyen_agent.workspace import recover_chapter_promotion
+
+        return recover_chapter_promotion(workspace_root, chapter_id)
