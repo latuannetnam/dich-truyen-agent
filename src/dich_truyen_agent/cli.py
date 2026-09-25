@@ -72,6 +72,7 @@ def build_parser() -> argparse.ArgumentParser:
     crawl.add_argument("--style")
     crawl.add_argument("--max-chapters", type=int, default=0)
     crawl.add_argument("--chapter-delay-seconds", type=float, default=3.0)
+    add_json_flag(crawl)
 
     val_prof = subparsers.add_parser("validate-crawl-profile")
     val_prof.add_argument("--workspace", type=Path, required=True)

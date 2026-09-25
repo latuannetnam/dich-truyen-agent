@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from urllib.parse import urlparse
 
-from dich_truyen_agent.models import CrawlProfile, ProfileSource
+from dich_truyen_agent.models import CrawlProfile, OperationResult, OperationStatus, ProfileSource
 from dich_truyen_agent.storage import atomic_write_yaml, load_yaml_model
 
 
@@ -82,3 +82,38 @@ def promote_local_crawl_profile(project_root: Path, workspace_root: Path) -> Pat
         _require_matching_domain(load_crawl_profile(destination), profile.domain.lower())
     atomic_write_yaml(destination, profile)
     return destination
+
+
+def install_local_profile(
+    workspace_root: Path,
+    candidate_path: Path,
+) -> OperationResult:
+    """Validate candidate with probe and install only as the workspace local override."""
+    try:
+        from dich_truyen_agent.crawl_probe import probe_crawl_profile
+        workspace_root = Path(workspace_root).resolve()
+        candidate_path = Path(candidate_path).resolve()
+        if not candidate_path.is_file():
+            return OperationResult(
+                status=OperationStatus.ERROR,
+                reason=f"candidate profile file not found: {candidate_path}",
+            )
+
+        probe_res = probe_crawl_profile(workspace_root, candidate_path)
+        if probe_res.status is not OperationStatus.OK:
+            return probe_res
+
+        profile = load_crawl_profile(candidate_path)
+        dest = workspace_root / "crawl-profile.yaml"
+        atomic_write_yaml(dest, profile)
+        return OperationResult(
+            status=OperationStatus.OK,
+            reason=f"installed local crawl profile override: {dest.name}",
+            report_paths=[str(dest)],
+        )
+    except Exception as error:
+        return OperationResult(
+            status=OperationStatus.ERROR,
+            reason=f"failed to install local crawl profile: {error}",
+        )
+
