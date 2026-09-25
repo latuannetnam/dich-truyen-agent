@@ -23,6 +23,7 @@ class BookOrchestratorState(TypedDict):
     profile_repair_attempts: int
     pending_approval: str | None  # crawl or qa
     approval_report_hash: str | None
+    approval_evidence_hashes: dict[str, str] | None
     status: str  # running, paused, blocked, completed, error, superseded
     error_code: str | None
     error_message: str | None
@@ -43,6 +44,7 @@ def create_initial_state(config: OrchestratorConfig, run_dir: Path) -> BookOrche
         profile_repair_attempts=0,
         pending_approval=None,
         approval_report_hash=None,
+        approval_evidence_hashes=None,
         status="running",
         error_code=None,
         error_message=None,

@@ -9,6 +9,7 @@ from dich_truyen_agent.models import (
     BookMetadata,
     ChapterCatalog,
     CheckpointType,
+    OperationResult,
     OperationStatus,
 )
 from dich_truyen_agent.orchestrator.models import PHASES, VALID_START_AT, VALID_STOP_AFTER
@@ -264,3 +265,72 @@ class WorkspaceOps:
             return EntryDecision(status="enter", phase="export", reason="entering export phase")
 
         return EntryDecision(status="blocked", phase=None, reason=f"unhandled phase: {start_at}")
+
+    def run_crawl(
+        self,
+        workspace_root: Path,
+        *,
+        max_chapters: int = 0,
+        delay_seconds: float = 3.0,
+        timeout_seconds: int = 1800,
+    ) -> OperationResult:
+        """Run deterministic crawl-book via supervised subprocess."""
+        import sys
+        from dich_truyen_agent.orchestrator.process import run_process
+
+        workspace_root = Path(workspace_root).resolve()
+        paths = workspace_paths(workspace_root.parent, workspace_root.name)
+        if not paths.book.is_file():
+            return OperationResult(
+                status=OperationStatus.ERROR,
+                reason="book.yaml missing",
+            )
+        metadata = load_yaml_model(paths.book, BookMetadata)
+        log_dir = paths.reports / "runs"
+        log_dir.mkdir(parents=True, exist_ok=True)
+        stdout_file = log_dir / "crawl_stdout.log"
+        stderr_file = log_dir / "crawl_stderr.log"
+
+        argv = [
+            sys.executable,
+            "-m",
+            "dich_truyen_agent.cli",
+            "crawl-book",
+            "--books-root",
+            str(paths.root.parent),
+            "--slug",
+            paths.root.name,
+            "--source-url",
+            metadata.source_url,
+            "--max-chapters",
+            str(max_chapters),
+            "--chapter-delay-seconds",
+            str(delay_seconds),
+            "--json",
+        ]
+        proc_res = run_process(
+            argv,
+            cwd=workspace_root,
+            timeout_seconds=timeout_seconds,
+            stdout_path=stdout_file,
+            stderr_path=stderr_file,
+        )
+        if proc_res.timed_out:
+            return OperationResult(
+                status=OperationStatus.ERROR,
+                reason=f"crawl timed out after {timeout_seconds}s",
+            )
+        if stdout_file.is_file():
+            try:
+                content = stdout_file.read_text(encoding="utf-8").strip()
+                if content:
+                    start = content.find("{")
+                    end = content.rfind("}")
+                    if start != -1 and end != -1:
+                        return OperationResult.model_validate_json(content[start : end + 1])
+            except Exception:
+                pass
+        return OperationResult(
+            status=OperationStatus.ERROR,
+            reason=proc_res.failure_detail or f"crawl process exited with code {proc_res.exit_code}",
+        )

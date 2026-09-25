@@ -139,3 +139,20 @@ class RunSummary(BaseModel):
     error_message: str | None = None
     invocations: list[dict[str, Any]] = Field(default_factory=list)
     report_paths: list[str] = Field(default_factory=list)
+
+
+class RunOutcome(BaseModel):
+    """Public outcome returned after an orchestrator run execution."""
+
+    status: str  # "completed", "paused", "blocked", "error"
+    run_id: str
+    selected_span: tuple[str, str]
+    current_phase: str
+    pending_approval: str | None = None
+    approval_report_path: str | None = None
+    approval_report_hash: str | None = None
+    error_code: str | None = None
+    error_message: str | None = None
+    exit_code: int = 0
+    next_command: str | None = None
+    data: dict[str, Any] = Field(default_factory=dict)
