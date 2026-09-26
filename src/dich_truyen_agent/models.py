@@ -12,7 +12,9 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class PersistedModel(BaseModel):
-    model_config = ConfigDict(extra="forbid", validate_assignment=True, populate_by_name=True)
+    model_config = ConfigDict(
+        extra="forbid", validate_assignment=True, populate_by_name=True
+    )
 
 
 class BookMetadata(PersistedModel):
@@ -23,6 +25,7 @@ class BookMetadata(PersistedModel):
     author: str | None = None
     translated_title: str | None = None
     translated_author: str | None = None
+    scope_managed: bool = False
 
 
 class ChapterCatalogEntry(PersistedModel):
@@ -227,7 +230,9 @@ class CrawlBrowserSessionProfile(PersistedModel):
 
 
 class CrawlBrowserNavigationProfile(PersistedModel):
-    wait_until: Literal["commit", "domcontentloaded", "load", "networkidle"] = "domcontentloaded"
+    wait_until: Literal["commit", "domcontentloaded", "load", "networkidle"] = (
+        "domcontentloaded"
+    )
     timeout_milliseconds: int = Field(default=30000, gt=0)
 
 
@@ -263,11 +268,19 @@ class CrawlBrowserProfile(PersistedModel):
     strategy: str | None = Field(default=None, min_length=1)
     launch_args: list[str] = Field(default_factory=list)
     user_agent: str | None = Field(default=None, min_length=1)
-    viewport: CrawlBrowserViewportProfile = Field(default_factory=CrawlBrowserViewportProfile)
+    viewport: CrawlBrowserViewportProfile = Field(
+        default_factory=CrawlBrowserViewportProfile
+    )
     init_scripts: list[str] = Field(default_factory=list)
-    challenge: CrawlBrowserChallengeProfile = Field(default_factory=CrawlBrowserChallengeProfile)
-    session: CrawlBrowserSessionProfile = Field(default_factory=CrawlBrowserSessionProfile)
-    navigation: CrawlBrowserNavigationProfile = Field(default_factory=CrawlBrowserNavigationProfile)
+    challenge: CrawlBrowserChallengeProfile = Field(
+        default_factory=CrawlBrowserChallengeProfile
+    )
+    session: CrawlBrowserSessionProfile = Field(
+        default_factory=CrawlBrowserSessionProfile
+    )
+    navigation: CrawlBrowserNavigationProfile = Field(
+        default_factory=CrawlBrowserNavigationProfile
+    )
     index: CrawlBrowserIndexProfile = Field(default_factory=CrawlBrowserIndexProfile)
     actions: list[CrawlBrowserActionProfile] = Field(default_factory=list)
 
@@ -336,6 +349,82 @@ class DiscoveredChapter(PersistedModel):
     parsed_ordinal: int | None = Field(default=None, ge=0)
 
 
+class SourceScopeRecord(PersistedModel):
+    schema_version: int = 1
+    source_url: str = Field(min_length=1)
+    mode: Literal["full", "prefix"]
+    requested_limit: int | None = Field(default=None, gt=0)
+    source_count: int = Field(gt=0)
+    source_digest: str = Field(min_length=1)
+    selected_count: int = Field(gt=0)
+    selected_chapter_ids: list[int] = Field(default_factory=list)
+    selected_urls: list[str] = Field(default_factory=list)
+    entries: list[DiscoveredChapter] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def validate_scope_invariants(self) -> SourceScopeRecord:
+        if not self.entries:
+            raise ValueError("source entries must not be empty")
+
+        if len(self.entries) != self.source_count:
+            raise ValueError(
+                f"source_count ({self.source_count}) does not match entries length ({len(self.entries)})"
+            )
+
+        expected_positions = list(range(1, len(self.entries) + 1))
+        actual_positions = [e.position for e in self.entries]
+        if actual_positions != expected_positions:
+            raise ValueError(
+                f"source entries must have contiguous 1-based positions, got: {actual_positions}"
+            )
+
+        if len(self.selected_chapter_ids) != self.selected_count:
+            raise ValueError(
+                f"selected_count ({self.selected_count}) does not match selected_chapter_ids length ({len(self.selected_chapter_ids)})"
+            )
+
+        if len(self.selected_urls) != self.selected_count:
+            raise ValueError(
+                f"selected_count ({self.selected_count}) does not match selected_urls length ({len(self.selected_urls)})"
+            )
+
+        if self.mode == "full":
+            if (
+                self.requested_limit is not None
+                and self.requested_limit != self.source_count
+            ):
+                raise ValueError(
+                    "full mode cannot have requested_limit different from source_count"
+                )
+            if self.selected_count != self.source_count:
+                raise ValueError("full mode must select all source chapters")
+        elif self.mode == "prefix":
+            if self.requested_limit is None:
+                raise ValueError("prefix mode requires requested_limit")
+            if self.requested_limit > self.source_count:
+                raise ValueError(
+                    f"requested_limit ({self.requested_limit}) cannot exceed source_count ({self.source_count})"
+                )
+            if self.selected_count != self.requested_limit:
+                raise ValueError(
+                    f"prefix mode selected_count ({self.selected_count}) must equal requested_limit ({self.requested_limit})"
+                )
+
+        expected_ids = [e.position for e in self.entries[: self.selected_count]]
+        if self.selected_chapter_ids != expected_ids:
+            raise ValueError(
+                f"selected_chapter_ids must match prefix entries, expected: {expected_ids}, got: {self.selected_chapter_ids}"
+            )
+
+        expected_urls = [e.source_url for e in self.entries[: self.selected_count]]
+        if self.selected_urls != expected_urls:
+            raise ValueError(
+                f"selected_urls must match prefix entries URLs, expected: {expected_urls}, got: {self.selected_urls}"
+            )
+
+        return self
+
+
 class ExtractedChapter(PersistedModel):
     title: str = Field(min_length=1)
     text: str = Field(min_length=1)
@@ -362,15 +451,19 @@ class CrawlReport(PersistedModel):
 
 class GlossaryTerm(PersistedModel):
     translation: str = Field(min_length=1)
-    category: str = Field(default="other")  # character, sect, location, item, cultivation, other
-    source: str = Field(min_length=1)      # manual, initial_generation, chapter_N_proposal
+    category: str = Field(
+        default="other"
+    )  # character, sect, location, item, cultivation, other
+    source: str = Field(min_length=1)  # manual, initial_generation, chapter_N_proposal
     is_canonical: bool = Field(default=False)
     note: str | None = None
 
 
 class BookGlossary(PersistedModel):
     schema_version: int = 1
-    terms: dict[str, GlossaryTerm] = Field(default_factory=dict)  # Chinese term -> GlossaryTerm
+    terms: dict[str, GlossaryTerm] = Field(
+        default_factory=dict
+    )  # Chinese term -> GlossaryTerm
 
 
 class GlossaryContextTerm(PersistedModel):

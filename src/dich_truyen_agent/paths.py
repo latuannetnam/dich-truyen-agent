@@ -38,6 +38,7 @@ class WorkspacePaths:
     glossary: Path
     glossary_snapshots: Path
     glossary_conflicts: Path
+    source_scope: Path
 
     @property
     def stage_directories(self) -> tuple[Path, ...]:
@@ -81,7 +82,11 @@ def validate_book_slug(books_root: Path, book_slug: str) -> Path:
 
 def validate_workspace_relative_path(workspace_root: Path, relative_path: str) -> Path:
     candidate_path = Path(relative_path)
-    if not relative_path or candidate_path.is_absolute() or ".." in candidate_path.parts:
+    if (
+        not relative_path
+        or candidate_path.is_absolute()
+        or ".." in candidate_path.parts
+    ):
         raise ValueError(f"path must stay workspace-relative: {relative_path!r}")
     candidate = workspace_root / candidate_path
     if not _is_beneath(workspace_root, candidate):
@@ -110,6 +115,7 @@ def workspace_paths(books_root: Path, book_slug: str) -> WorkspacePaths:
         glossary=root / "glossary.yaml",
         glossary_snapshots=root / "checkpoints" / "glossary-snapshots",
         glossary_conflicts=reports / "glossary-conflicts.yaml",
+        source_scope=reports / "source-scope.yaml",
     )
 
 
