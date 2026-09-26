@@ -88,6 +88,19 @@ class ActivityTracer:
                 self.summary.report_paths.append(path)
                 self._write_summary_locked()
 
+    def update_scope(
+        self,
+        *,
+        source_scope_digest: str | None = None,
+        scope_summary: str | None = None,
+    ) -> None:
+        with self._lock:
+            if source_scope_digest is not None:
+                self.summary.source_scope_digest = source_scope_digest
+            if scope_summary is not None:
+                self.summary.scope_summary = scope_summary
+            self._write_summary_locked()
+
     def write_summary(self) -> Path:
         with self._lock:
             self._write_summary_locked()

@@ -10,20 +10,25 @@ from typing import Any
 
 from langgraph.checkpoint.sqlite import SqliteSaver
 
+from dich_truyen_agent.models import BookMetadata, ChapterCatalog, OperationStatus
 from dich_truyen_agent.orchestrator.attempts import AttemptJournal
 from dich_truyen_agent.orchestrator.graph import GraphRunner
 from dich_truyen_agent.orchestrator.models import OrchestratorConfig, RunOutcome
 from dich_truyen_agent.orchestrator.runners.agy import AgyRunner
 from dich_truyen_agent.orchestrator.runners.base import HarnessRunner
 from dich_truyen_agent.orchestrator.workspace_ops import WorkspaceOps
-from dich_truyen_agent.paths import workspace_paths
+from dich_truyen_agent.paths import find_project_root, workspace_paths
+from dich_truyen_agent.storage import load_yaml_model
+from dich_truyen_agent.styles import load_style, resolve_style_path
+from dich_truyen_agent.workspace import initialize_workspace
 
 
 def _lock_path(workspace_root: Path) -> Path:
-    resolved = Path(workspace_root).resolve()
-    paths = workspace_paths(resolved.parent, resolved.name)
-    locks_dir = paths.root.parent / ".orchestrator-locks"
-    return locks_dir / f"{paths.root.name}.lock"
+    raw_path = Path(workspace_root)
+    paths = workspace_paths(raw_path.parent, raw_path.name)
+    resolved = paths.root.resolve()
+    locks_dir = resolved.parent / ".orchestrator-locks"
+    return locks_dir / f"{resolved.name}.lock"
 
 
 def _legacy_lock_path(workspace_root: Path) -> Path:
@@ -212,139 +217,251 @@ class BookOrchestrator:
             )
 
         try:
-            if not (workspace_root / "book.yaml").is_file():
+            return self._execute_start(config)
+        finally:
+            self._release_locks(ext_lock, legacy_lock)
+
+    def _discover_title(self, source_url: str, workspace_root: Path) -> str | None:
+        try:
+            import asyncio
+            from dich_truyen_agent.crawl_batch import discover_initial_title
+
+            return asyncio.run(discover_initial_title(source_url, workspace_root))
+        except Exception:
+            return None
+
+    def _execute_start(self, config: OrchestratorConfig) -> RunOutcome:
+        workspace_root = config.workspace_root
+        paths = workspace_paths(workspace_root.parent, workspace_root.name)
+
+        if not paths.book.is_file():
+            if not config.source_url:
                 return RunOutcome(
                     status="blocked",
                     run_id=config.run_id,
                     selected_span=(config.start_at, config.stop_after),
                     current_phase="inspect",
-                    error_message=f"workspace metadata book.yaml is missing: {workspace_root / 'book.yaml'}",
+                    error_message=f"workspace metadata book.yaml is missing: {paths.book}",
                     exit_code=3,
                 )
 
-            # Check manifest for previous paused run
-            manifest = self._load_manifest(workspace_root)
-            if manifest and manifest.get("status") == "paused":
-                old_run_id = manifest.get("current_run_id")
-                if config.start_at == "auto":
-                    # Plain new invocation reports pending resume
-                    return RunOutcome(
-                        status="paused",
-                        run_id=old_run_id or config.run_id,
-                        selected_span=(
-                            manifest.get("start_at", "auto"),
-                            manifest.get("stop_after", "export"),
-                        ),
-                        current_phase="paused",
-                        error_message=f"Run {old_run_id} is paused. Resume it with --resume or start a new run with an explicit --start-at.",
-                        next_command=f"orchestrate --workspace {workspace_root} --resume",
-                        exit_code=2,
-                    )
-                else:
-                    # Explicit new --start-at marks old run superseded
-                    if old_run_id:
-                        old_summary_file = (
-                            workspace_root
-                            / "reports"
-                            / "runs"
-                            / old_run_id
-                            / "run_summary.json"
-                        )
-                        if old_summary_file.is_file():
-                            try:
-                                old_summary = json.loads(
-                                    old_summary_file.read_text(encoding="utf-8")
-                                )
-                                old_summary["status"] = "superseded"
-                                old_summary["finished_at"] = datetime.now(
-                                    UTC
-                                ).isoformat()
-                                old_summary_file.write_text(
-                                    json.dumps(old_summary, indent=2), encoding="utf-8"
-                                )
-                            except Exception:
-                                pass
-
-            # Model validation preflight
-            if config.start_at not in ("qa", "export") and hasattr(
-                self.runner, "get_available_models"
-            ):
-                models_to_check = []
-                if config.global_model:
-                    models_to_check.append(config.global_model)
-                if config.translation_model:
-                    models_to_check.append(config.translation_model)
-                if models_to_check:
-                    try:
-                        avail = self.runner.get_available_models()
-                        if avail:
-                            for m in models_to_check:
-                                if m not in avail:
-                                    return RunOutcome(
-                                        status="blocked",
-                                        run_id=config.run_id,
-                                        selected_span=(
-                                            config.start_at,
-                                            config.stop_after,
-                                        ),
-                                        current_phase="model_preflight",
-                                        error_code="invalid_model",
-                                        error_message=f"Requested model '{m}' is not available in agy models ({avail})",
-                                        exit_code=3,
-                                    )
-                    except Exception:
-                        pass
-
-            run_dir = workspace_root / "reports" / "runs" / config.run_id
-            run_dir.mkdir(parents=True, exist_ok=True)
-
-            # Persist initial manifest
-            self._save_manifest(
-                workspace_root,
-                {
-                    "current_run_id": config.run_id,
-                    "status": "running",
-                    "start_at": config.start_at,
-                    "stop_after": config.stop_after,
-                    "selected_span": [config.start_at, config.stop_after],
-                    "updated_at": datetime.now(UTC).isoformat(),
-                },
-            )
-
-            # SQLite checkpointer
-            db_path = run_dir / "checkpoint.sqlite"
-            conn = sqlite3.connect(str(db_path), check_same_thread=False)
-            saver = SqliteSaver(conn)
-
-            journal = AttemptJournal(run_dir / "attempts.json")
-            graph_runner = GraphRunner(
-                ops=self.ops,
-                runner=self.runner,
-                config=config,
-                checkpointer=saver,
-                journal=journal,
-            )
-
+            project_root = find_project_root(workspace_root)
+            style_key = config.style
             try:
-                outcome = graph_runner.run()
-            finally:
-                conn.close()
+                style_path = resolve_style_path(
+                    project_root, Path(style_key) if style_key else None
+                )
+            except Exception as e:
+                return RunOutcome(
+                    status="blocked",
+                    run_id=config.run_id,
+                    selected_span=(config.start_at, config.stop_after),
+                    current_phase="inspect",
+                    error_code="invalid_style",
+                    error_message=f"Invalid style profile: {e}",
+                    exit_code=3,
+                )
 
-            # Update manifest with final status
-            self._save_manifest(
-                workspace_root,
-                {
-                    "current_run_id": config.run_id,
-                    "status": outcome.status,
-                    "start_at": config.start_at,
-                    "stop_after": config.stop_after,
-                    "selected_span": [config.start_at, config.stop_after],
-                    "updated_at": datetime.now(UTC).isoformat(),
-                },
+            title = config.title
+            if not title:
+                title = self._discover_title(config.source_url, workspace_root)
+            if not title or not title.strip():
+                return RunOutcome(
+                    status="blocked",
+                    run_id=config.run_id,
+                    selected_span=(config.start_at, config.stop_after),
+                    current_phase="inspect",
+                    error_code="missing_title",
+                    error_message="Could not discover novel title and no title was provided.",
+                    exit_code=3,
+                )
+
+            slug = config.book_slug or workspace_root.name
+            metadata = BookMetadata(
+                title=title.strip(),
+                author=config.author or "Unknown",
+                source_url=config.source_url,
+                book_slug=slug,
+                scope_managed=True,
             )
-            return outcome
+            catalog = ChapterCatalog(chapters=[])
+            style_obj = load_style(style_path)
+            init_res = initialize_workspace(
+                workspace_root.parent, metadata, catalog, style_obj
+            )
+            if init_res.status != OperationStatus.OK:
+                return RunOutcome(
+                    status="blocked",
+                    run_id=config.run_id,
+                    selected_span=(config.start_at, config.stop_after),
+                    current_phase="inspect",
+                    error_message=f"Failed to initialize workspace: {init_res.reason}",
+                    exit_code=3,
+                )
+        else:
+            existing_meta = load_yaml_model(paths.book, BookMetadata)
+            if (
+                config.source_url
+                and existing_meta.source_url
+                and existing_meta.source_url != config.source_url
+            ):
+                return RunOutcome(
+                    status="blocked",
+                    run_id=config.run_id,
+                    selected_span=(config.start_at, config.stop_after),
+                    current_phase="inspect",
+                    error_code="source_url_mismatch",
+                    error_message=f"Workspace source URL {existing_meta.source_url} does not match {config.source_url}",
+                    exit_code=3,
+                )
+            if paths.source_scope.is_file():
+                from dich_truyen_agent.scope import load_source_scope
+
+                try:
+                    scope_rec = load_source_scope(paths.source_scope)
+                    if (
+                        config.scope_limit is not None
+                        and config.scope_limit != scope_rec.requested_limit
+                    ):
+                        return RunOutcome(
+                            status="blocked",
+                            run_id=config.run_id,
+                            selected_span=(config.start_at, config.stop_after),
+                            current_phase="inspect",
+                            error_code="scope_conflict",
+                            error_message=f"Cannot change scope limit of existing scoped workspace from {scope_rec.requested_limit} to {config.scope_limit}.",
+                            exit_code=3,
+                        )
+                except Exception as e:
+                    return RunOutcome(
+                        status="blocked",
+                        run_id=config.run_id,
+                        selected_span=(config.start_at, config.stop_after),
+                        current_phase="inspect",
+                        error_code="scope_error",
+                        error_message=f"Failed to load existing source scope: {e}",
+                        exit_code=3,
+                    )
+
+        # Check manifest for previous paused run
+        manifest = self._load_manifest(workspace_root)
+        if manifest and manifest.get("status") == "paused":
+            old_run_id = manifest.get("current_run_id")
+            if config.start_at == "auto":
+                # Plain new invocation reports pending resume
+                return RunOutcome(
+                    status="paused",
+                    run_id=old_run_id or config.run_id,
+                    selected_span=(
+                        manifest.get("start_at", "auto"),
+                        manifest.get("stop_after", "export"),
+                    ),
+                    current_phase="paused",
+                    error_message=f"Run {old_run_id} is paused. Resume it with --resume or start a new run with an explicit --start-at.",
+                    next_command=f"orchestrate --workspace {workspace_root} --resume",
+                    exit_code=2,
+                )
+            else:
+                # Explicit new --start-at marks old run superseded
+                if old_run_id:
+                    old_summary_file = (
+                        workspace_root
+                        / "reports"
+                        / "runs"
+                        / old_run_id
+                        / "run_summary.json"
+                    )
+                    if old_summary_file.is_file():
+                        try:
+                            old_summary = json.loads(
+                                old_summary_file.read_text(encoding="utf-8")
+                            )
+                            old_summary["status"] = "superseded"
+                            old_summary["finished_at"] = datetime.now(UTC).isoformat()
+                            old_summary_file.write_text(
+                                json.dumps(old_summary, indent=2), encoding="utf-8"
+                            )
+                        except Exception:
+                            pass
+
+        # Model validation preflight
+        if config.start_at not in ("qa", "export") and hasattr(
+            self.runner, "get_available_models"
+        ):
+            models_to_check = []
+            if config.global_model:
+                models_to_check.append(config.global_model)
+            if config.translation_model:
+                models_to_check.append(config.translation_model)
+            if models_to_check:
+                try:
+                    avail = self.runner.get_available_models()
+                    if avail:
+                        for m in models_to_check:
+                            if m not in avail:
+                                return RunOutcome(
+                                    status="blocked",
+                                    run_id=config.run_id,
+                                    selected_span=(
+                                        config.start_at,
+                                        config.stop_after,
+                                    ),
+                                    current_phase="model_preflight",
+                                    error_code="invalid_model",
+                                    error_message=f"Requested model '{m}' is not available in agy models ({avail})",
+                                    exit_code=3,
+                                )
+                except Exception:
+                    pass
+
+        run_dir = workspace_root / "reports" / "runs" / config.run_id
+        run_dir.mkdir(parents=True, exist_ok=True)
+
+        # Persist initial manifest
+        self._save_manifest(
+            workspace_root,
+            {
+                "current_run_id": config.run_id,
+                "status": "running",
+                "start_at": config.start_at,
+                "stop_after": config.stop_after,
+                "selected_span": [config.start_at, config.stop_after],
+                "updated_at": datetime.now(UTC).isoformat(),
+            },
+        )
+
+        # SQLite checkpointer
+        db_path = run_dir / "checkpoint.sqlite"
+        conn = sqlite3.connect(str(db_path), check_same_thread=False)
+        saver = SqliteSaver(conn)
+
+        journal = AttemptJournal(run_dir / "attempts.json")
+        graph_runner = GraphRunner(
+            ops=self.ops,
+            runner=self.runner,
+            config=config,
+            checkpointer=saver,
+            journal=journal,
+        )
+
+        try:
+            outcome = graph_runner.run()
         finally:
-            self._release_locks(ext_lock, legacy_lock)
+            conn.close()
+
+        # Update manifest with final status
+        self._save_manifest(
+            workspace_root,
+            {
+                "current_run_id": config.run_id,
+                "status": outcome.status,
+                "start_at": config.start_at,
+                "stop_after": config.stop_after,
+                "selected_span": [config.start_at, config.stop_after],
+                "updated_at": datetime.now(UTC).isoformat(),
+            },
+        )
+        return outcome
 
     def resume(
         self,
@@ -431,6 +548,50 @@ class BookOrchestrator:
                     exit_code=3,
                 )
 
+            expected_digest = summary.get("source_scope_digest")
+            if expected_digest:
+                paths = workspace_paths(workspace_root.parent, workspace_root.name)
+                if not paths.source_scope.is_file():
+                    return RunOutcome(
+                        status="blocked",
+                        run_id=run_id,
+                        selected_span=tuple(
+                            summary.get("selected_span", ["auto", "export"])
+                        ),
+                        current_phase="resume",
+                        error_code="scope_digest_mismatch",
+                        error_message=f"Source scope file missing on resume: {paths.source_scope}",
+                        exit_code=3,
+                    )
+                from dich_truyen_agent.scope import load_source_scope
+
+                try:
+                    scope_rec = load_source_scope(paths.source_scope)
+                    if scope_rec.source_digest != expected_digest:
+                        return RunOutcome(
+                            status="blocked",
+                            run_id=run_id,
+                            selected_span=tuple(
+                                summary.get("selected_span", ["auto", "export"])
+                            ),
+                            current_phase="resume",
+                            error_code="scope_digest_mismatch",
+                            error_message=f"Source scope digest changed from {expected_digest} to {scope_rec.source_digest}.",
+                            exit_code=3,
+                        )
+                except Exception as e:
+                    return RunOutcome(
+                        status="blocked",
+                        run_id=run_id,
+                        selected_span=tuple(
+                            summary.get("selected_span", ["auto", "export"])
+                        ),
+                        current_phase="resume",
+                        error_code="scope_digest_mismatch",
+                        error_message=f"Failed to validate source scope on resume: {e}",
+                        exit_code=3,
+                    )
+
             db_path = run_dir / "checkpoint.sqlite"
             if not db_path.is_file():
                 return RunOutcome(
@@ -448,19 +609,49 @@ class BookOrchestrator:
             conn = sqlite3.connect(str(db_path), check_same_thread=False)
             saver = SqliteSaver(conn)
 
-            # Reconstruct config pinned from saved summary
-            config = OrchestratorConfig(
-                run_id=run_id,
-                workspace_root=workspace_root,
-                start_at=summary.get("start_at", "auto"),
-                stop_after=summary.get("stop_after", "export"),
-                formats=summary.get("requested_formats", ["epub", "txt"]),
-                global_model=summary.get("global_model"),
-                translation_model=summary.get("translation_model"),
-                allow_harness_permission_bypass=summary.get(
-                    "allow_harness_permission_bypass", False
+            # Reconstruct config pinned from saved summary / run_policy
+            policy = summary.get("run_policy") or {}
+            config_kwargs: dict[str, Any] = {
+                "run_id": run_id,
+                "workspace_root": workspace_root,
+                "start_at": summary.get("start_at", "auto"),
+                "stop_after": summary.get("stop_after", "export"),
+                "scope_limit": policy.get("scope_limit", summary.get("scope_limit")),
+                "formats": policy.get(
+                    "formats", summary.get("requested_formats", ["epub", "txt"])
                 ),
-            )
+                "auto_approve": policy.get(
+                    "auto_approve", summary.get("auto_approve", False)
+                ),
+                "allow_warnings": policy.get(
+                    "allow_warnings", summary.get("allow_warnings", False)
+                ),
+                "global_model": policy.get("global_model", summary.get("global_model")),
+                "translation_model": policy.get(
+                    "translation_model", summary.get("translation_model")
+                ),
+                "allow_harness_permission_bypass": policy.get(
+                    "allow_harness_permission_bypass",
+                    summary.get("allow_harness_permission_bypass", False),
+                ),
+            }
+            for field_name in (
+                "batch_size",
+                "timeout_seconds",
+                "crawl_timeout_seconds",
+                "translation_timeout_seconds",
+                "qa_timeout_seconds",
+                "export_timeout_seconds",
+                "max_repair_attempts",
+                "max_chapter_attempts",
+            ):
+                val = policy.get(field_name)
+                if val is None:
+                    val = summary.get(field_name)
+                if val is not None:
+                    config_kwargs[field_name] = val
+
+            config = OrchestratorConfig(**config_kwargs)
 
             journal = AttemptJournal(run_dir / "attempts.json")
             graph_runner = GraphRunner(

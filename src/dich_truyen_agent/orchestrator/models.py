@@ -21,6 +21,11 @@ class OrchestratorConfig(BaseModel):
     start_at: str = "auto"
     stop_after: str = "export"
     scope_limit: int | None = Field(default=None, gt=0)
+    source_url: str | None = None
+    book_slug: str | None = None
+    title: str | None = None
+    author: str | None = None
+    style: str | None = None
     formats: list[str] = Field(default_factory=lambda: ["epub", "txt"])
     batch_size: int = 5
     timeout_seconds: int = 1800
@@ -123,6 +128,46 @@ class OrchestratorConfig(BaseModel):
         return 5
 
 
+class RunPolicy(BaseModel):
+    """Execution policy pinned for a run and preserved across pause/resume."""
+
+    scope_limit: int | None = None
+    formats: list[str] = Field(default_factory=lambda: ["epub", "txt"])
+    auto_approve: bool = False
+    allow_warnings: bool = False
+    batch_size: int = 5
+    timeout_seconds: int = 1800
+    crawl_timeout_seconds: int = 1800
+    translation_timeout_seconds: int = 1800
+    qa_timeout_seconds: int = 600
+    export_timeout_seconds: int = 600
+    max_repair_attempts: int = 3
+    max_chapter_attempts: int = 3
+    global_model: str | None = None
+    translation_model: str | None = None
+    allow_harness_permission_bypass: bool = False
+
+    @classmethod
+    def from_config(cls, config: OrchestratorConfig) -> RunPolicy:
+        return cls(
+            scope_limit=config.scope_limit,
+            formats=list(config.formats),
+            auto_approve=config.auto_approve,
+            allow_warnings=config.allow_warnings,
+            batch_size=config.batch_size,
+            timeout_seconds=config.timeout_seconds,
+            crawl_timeout_seconds=config.crawl_timeout_seconds,
+            translation_timeout_seconds=config.translation_timeout_seconds,
+            qa_timeout_seconds=config.qa_timeout_seconds,
+            export_timeout_seconds=config.export_timeout_seconds,
+            max_repair_attempts=config.max_repair_attempts,
+            max_chapter_attempts=config.max_chapter_attempts,
+            global_model=config.global_model,
+            translation_model=config.translation_model,
+            allow_harness_permission_bypass=config.allow_harness_permission_bypass,
+        )
+
+
 class RunSummary(BaseModel):
     """Compact summary persisted to reports/runs/<run_id>/run_summary.json."""
 
@@ -138,6 +183,9 @@ class RunSummary(BaseModel):
     translation_model: str | None = None
     effective_model: str = "unknown"
     allow_harness_permission_bypass: bool = False
+    run_policy: dict[str, Any] | None = None
+    source_scope_digest: str | None = None
+    scope_summary: str | None = None
     started_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     finished_at: datetime | None = None
     completed_chapters: int = 0

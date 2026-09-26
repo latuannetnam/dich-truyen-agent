@@ -33,6 +33,7 @@ from dich_truyen_agent.orchestrator.attempts import AttemptJournal
 from dich_truyen_agent.orchestrator.models import (
     OrchestratorConfig,
     RunOutcome,
+    RunPolicy,
     RunSummary,
 )
 from dich_truyen_agent.orchestrator.runners import resolve_model_for_phase
@@ -370,6 +371,19 @@ def build_orchestrator_graph(
                 "status": "blocked",
                 "error_message": f"incomplete crawl: {report.completed_count}/{report.selected_count} chapters completed",
             }
+
+        if paths.source_scope.is_file():
+            try:
+                from dich_truyen_agent.scope import load_source_scope
+
+                scope_rec = load_source_scope(paths.source_scope)
+                if tracer:
+                    tracer.update_scope(
+                        source_scope_digest=scope_rec.source_digest,
+                        scope_summary=report.scope_summary,
+                    )
+            except Exception:
+                pass
 
         report_hash = sha256_file(crawl_rep_path)
         evidence_hashes = _compute_crawl_evidence_hashes(workspace_root)
@@ -1171,6 +1185,7 @@ class GraphRunner:
                 global_model=config.global_model,
                 translation_model=config.translation_model,
                 allow_harness_permission_bypass=config.allow_harness_permission_bypass,
+                run_policy=RunPolicy.from_config(config).model_dump(),
             ),
         )
         self.graph = build_orchestrator_graph(

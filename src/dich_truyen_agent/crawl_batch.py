@@ -4,6 +4,7 @@ import asyncio
 import re
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 import httpx
 from bs4 import BeautifulSoup
@@ -90,6 +91,63 @@ def detect_anti_bot_blocking(html: str, status_code: int = 200) -> str | None:
         if marker in lower_html:
             return f"anti-bot block detected ({marker})"
     return None
+
+
+def extract_title_from_index_html(html_content: str) -> str | None:
+    """Extract usable book title from index HTML, rejecting generic titles."""
+    if not html_content:
+        return None
+    soup = BeautifulSoup(html_content, "lxml")
+    title_tag = soup.find("title")
+    if not title_tag:
+        return None
+    raw_title = title_tag.get_text().strip()
+    cleaned = re.split(r"[-_|_]|–", raw_title)[0].strip()
+    if not cleaned or cleaned.lower() in {"novel", "index", "home", "untitled"}:
+        return None
+    return cleaned
+
+
+async def discover_initial_title(
+    project_root: Path,
+    source_url: str,
+    workspace_root: Path | None = None,
+    static_crawler_class: Any = None,
+    renderer_instance: Any = None,
+) -> str | None:
+    """Discover index page and extract book title using static crawler or Playwright fallback."""
+    try:
+        profile_source = load_active_crawl_profile(
+            project_root, workspace_root or Path("."), source_url
+        )
+    except Exception:
+        return None
+
+    crawler_cls = static_crawler_class or StaticCrawler
+    crawler = crawler_cls(CrawlSettings())
+    html_content = None
+    try:
+        raw_bytes, http_charset = await crawler.fetch(source_url)
+        decoded, _, _ = decode_html(
+            raw_bytes, profile_source.profile.encoding.index, http_charset
+        )
+        if not detect_anti_bot_blocking(decoded):
+            html_content = decoded
+    except Exception:
+        html_content = None
+    finally:
+        await crawler.close()
+
+    if not html_content:
+        try:
+            renderer = renderer_instance or PlaywrightRenderer()
+            html_content = await renderer.render(
+                source_url, profile_source.profile, purpose="index"
+            )
+        except Exception:
+            return None
+
+    return extract_title_from_index_html(html_content)
 
 
 async def crawl_book(
@@ -360,10 +418,8 @@ async def crawl_book(
 
                 if is_new:
                     # Extract book title automatically
-                    soup = BeautifulSoup(html_content, "lxml")
-                    title_tag = soup.find("title")
-                    title = title_tag.get_text().strip() if title_tag else book_slug
-                    title = re.split(r"[-_|_]|–", title)[0].strip()
+                    extracted = extract_title_from_index_html(html_content)
+                    title = extracted if extracted else book_slug
 
                     metadata = BookMetadata(
                         book_slug=book_slug,
