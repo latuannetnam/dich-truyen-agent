@@ -20,9 +20,11 @@ from dich_truyen_agent.models import (
     GlossaryTerm,
     TranslationSettings,
 )
+from dich_truyen_agent.orchestrator.models import OrchestratorConfig, RunOutcome
+from dich_truyen_agent.orchestrator.orchestrator import BookOrchestrator
 from dich_truyen_agent.paths import workspace_paths
-from dich_truyen_agent.storage import atomic_write_yaml
-from dich_truyen_agent.styles import load_selected_style, load_style
+from dich_truyen_agent.storage import atomic_write_yaml, load_yaml_model
+from dich_truyen_agent.styles import load_selected_style, load_style, resolve_style_path
 from dich_truyen_agent.workspace import (
     initialize_workspace,
     inspect_workspace,
@@ -30,6 +32,7 @@ from dich_truyen_agent.workspace import (
 )
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
+_UNSET = object()
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -176,30 +179,47 @@ def build_parser() -> argparse.ArgumentParser:
 
     # Orchestrator Command
     orch = subparsers.add_parser("orchestrate")
-    orch.add_argument("--workspace", type=Path, required=True)
+    orch.add_argument("--workspace", type=Path, required=False, default=None)
+    orch.add_argument("--url", type=str, default=None)
+    orch.add_argument("--slug", type=str, default=None)
+    orch.add_argument("--title", type=str, default=None)
+    orch.add_argument("--author", type=str, default=None)
+    orch.add_argument("--style", type=str, default=None)
+    orch.add_argument("--limit", type=int, default=None)
     orch.add_argument(
         "--start-at",
-        default="auto",
+        default=_UNSET,
         choices=["auto", "crawl", "translate", "qa", "export"],
     )
     orch.add_argument(
-        "--stop-after", default="export", choices=["crawl", "translate", "qa", "export"]
+        "--stop-after",
+        default=_UNSET,
+        choices=["crawl", "translate", "qa", "export"],
     )
     orch.add_argument("--resume", action="store_true")
     orch.add_argument("--decision", choices=["approve", "reject"])
-    orch.add_argument("--batch-size", type=int, default=None)
-    orch.add_argument("--timeout", type=int, default=1800)
-    orch.add_argument("--chapter-timeout", type=int, default=1800)
-    orch.add_argument("--agent-timeout", type=int, default=1800)
-    orch.add_argument("--crawl-timeout", type=int, default=21600)
-    orch.add_argument("--qa-timeout", type=int, default=600)
-    orch.add_argument("--export-timeout", type=int, default=600)
-    orch.add_argument("--profile-repair-attempts", type=int, default=2)
-    orch.add_argument("--max-chapter-attempts", type=int, default=3)
-    orch.add_argument("--formats", default="epub,azw3")
-    orch.add_argument("--auto-approve", action="store_true")
-    orch.add_argument("--allow-warnings", action="store_true")
-    orch.add_argument("--allow-harness-permission-bypass", action="store_true")
+    orch.add_argument("--batch-size", type=int, default=_UNSET)
+    orch.add_argument("--timeout", type=int, default=_UNSET)
+    orch.add_argument("--chapter-timeout", type=int, default=_UNSET)
+    orch.add_argument("--agent-timeout", type=int, default=_UNSET)
+    orch.add_argument("--crawl-timeout", type=int, default=_UNSET)
+    orch.add_argument("--qa-timeout", type=int, default=_UNSET)
+    orch.add_argument("--export-timeout", type=int, default=_UNSET)
+    orch.add_argument("--profile-repair-attempts", type=int, default=_UNSET)
+    orch.add_argument("--max-chapter-attempts", type=int, default=_UNSET)
+    orch.add_argument("--formats", default=_UNSET)
+    orch.add_argument(
+        "-y",
+        "--yes",
+        "--auto-approve",
+        dest="auto_approve",
+        action="store_true",
+        default=False,
+    )
+    orch.add_argument("--allow-warnings", action="store_true", default=False)
+    orch.add_argument(
+        "--allow-harness-permission-bypass", action="store_true", default=False
+    )
     orch.add_argument("--agy-model", type=str, default=None)
     orch.add_argument("--agy-translation-model", type=str, default=None)
     add_json_flag(orch)
@@ -573,7 +593,49 @@ def _print_json_result(result: OperationResult) -> None:
     print(result.model_dump_json(indent=2))
 
 
-def _print_orchestrate_outcome(outcome: Any) -> None:
+def _print_paused_approval_summary(workspace_root: Path, outcome: RunOutcome) -> None:
+    print(f"\n--- Gate Approval Required: {outcome.pending_approval or 'Approval'} ---")
+    print(f"Run ID: {outcome.run_id}")
+    if outcome.approval_report_path:
+        print(f"Report: {outcome.approval_report_path}")
+    if outcome.approval_report_hash:
+        print(f"Report Hash: {outcome.approval_report_hash[:16]}...")
+
+    rep_path = outcome.approval_report_path
+    if rep_path:
+        report_file = workspace_root / rep_path
+        if report_file.is_file():
+            try:
+                from dich_truyen_agent.models import CrawlReport
+
+                if outcome.pending_approval == "crawl_approval":
+                    rep = load_yaml_model(report_file, CrawlReport)
+                    scope_display = rep.scope_summary or rep.scope.value
+                    print(f"Scope: {scope_display}")
+                    print(
+                        f"Selected chapters: {rep.completed_count}/{rep.selected_count} (Source total: {rep.source_discovered_count or rep.discovered_count})"
+                    )
+                    if rep.warnings:
+                        print(f"Warnings ({len(rep.warnings)}):")
+                        for w in rep.warnings[:5]:
+                            print(f"  - {w}")
+                elif outcome.pending_approval == "qa_approval":
+                    from dich_truyen_agent.qa.models import QAReport
+
+                    qrep = load_yaml_model(report_file, QAReport)
+                    print(f"Total chapters: {qrep.total_chapters}")
+                    print(f"Anomalies: {qrep.total_anomalies}")
+                    if qrep.warnings:
+                        print(f"Warnings ({len(qrep.warnings)}):")
+                        for w in qrep.warnings[:5]:
+                            print(f"  - {w}")
+            except Exception:
+                pass
+
+
+def _print_orchestrate_outcome(
+    outcome: Any, workspace_root: Path | None = None
+) -> None:
     print(f"status: {outcome.status}")
     print(f"run_id: {outcome.run_id}")
     print(f"span: {outcome.selected_span[0]} -> {outcome.selected_span[1]}")
@@ -588,98 +650,425 @@ def _print_orchestrate_outcome(outcome: Any) -> None:
         print(f"error_message: {outcome.error_message}")
     if outcome.next_command:
         print(f"next_command: {outcome.next_command}")
+    ws_str = workspace_root or (
+        outcome.data.get("workspace_root") if outcome.data else None
+    )
+    if outcome.status == "completed" and ws_str:
+        ws_path = Path(ws_str)
+        scope_file = ws_path / "reports" / "source-scope.yaml"
+        if scope_file.is_file():
+            try:
+                from dich_truyen_agent.scope import load_source_scope
+
+                rec = load_source_scope(scope_file)
+                if rec.mode == "prefix":
+                    print(f"scope: prefix {rec.selected_count} of {rec.source_count}")
+            except Exception:
+                pass
+        exports_dir = ws_path / "exports"
+        if exports_dir.is_dir():
+            for p in sorted(exports_dir.iterdir()):
+                if p.is_file():
+                    print(f"export: {p}")
 
 
 def run_orchestrate(args: argparse.Namespace) -> Any:
-    from dich_truyen_agent.orchestrator.models import OrchestratorConfig, RunOutcome
-    from dich_truyen_agent.orchestrator.orchestrator import BookOrchestrator
-
-    workspace_root = args.workspace.resolve()
     orchestrator = BookOrchestrator()
 
     if args.decision and not args.resume:
         return RunOutcome(
             status="blocked",
             run_id="none",
-            selected_span=(args.start_at, args.stop_after),
+            selected_span=(
+                args.start_at if args.start_at is not _UNSET else "auto",
+                args.stop_after if args.stop_after is not _UNSET else "export",
+            ),
             current_phase="cli_validation",
             error_code="invalid_arguments",
             error_message="--decision requires --resume",
             exit_code=3,
         )
 
+    # 1. Resolve workspace root
+    workspace_arg = getattr(args, "workspace", None)
+    slug_arg = getattr(args, "slug", None)
+    url_arg = getattr(args, "url", None)
+    style_arg = getattr(args, "style", None)
+    title_arg = getattr(args, "title", None)
+    author_arg = getattr(args, "author", None)
+    limit_arg = getattr(args, "limit", None)
+
+    if limit_arg is not None and limit_arg <= 0:
+        return RunOutcome(
+            status="blocked",
+            run_id="none",
+            selected_span=("auto", "export"),
+            current_phase="cli_validation",
+            error_code="invalid_limit",
+            error_message=f"--limit must be a positive integer, got {limit_arg}",
+            exit_code=3,
+        )
+
     if args.resume:
-        if (
-            args.start_at != "auto"
-            or args.stop_after != "export"
-            or args.agy_model is not None
-            or args.agy_translation_model is not None
+        # Check creation options
+        if any(
+            x is not None
+            for x in (url_arg, slug_arg, title_arg, author_arg, style_arg, limit_arg)
         ):
             return RunOutcome(
                 status="blocked",
                 run_id="none",
-                selected_span=(args.start_at, args.stop_after),
+                selected_span=("auto", "export"),
                 current_phase="cli_validation",
                 error_code="invalid_arguments",
-                error_message="--resume cannot be combined with phase selectors or model options",
+                error_message="--resume cannot be combined with creation options (--url, --slug, --title, --author, --style, --limit)",
                 exit_code=3,
             )
-        return orchestrator.resume(workspace_root, decision=args.decision)
 
-    # Validating phase span
-    phases = ("crawl", "translate", "qa", "export")
-    if args.start_at != "auto":
-        start_idx = phases.index(args.start_at)
-        stop_idx = phases.index(args.stop_after)
-        if start_idx > stop_idx:
+        # Check policy overrides
+        explicit_overrides = []
+        if args.start_at is not _UNSET:
+            explicit_overrides.append("--start-at")
+        if args.stop_after is not _UNSET:
+            explicit_overrides.append("--stop-after")
+        if args.batch_size is not _UNSET:
+            explicit_overrides.append("--batch-size")
+        if args.timeout is not _UNSET:
+            explicit_overrides.append("--timeout")
+        if args.chapter_timeout is not _UNSET:
+            explicit_overrides.append("--chapter-timeout")
+        if args.agent_timeout is not _UNSET:
+            explicit_overrides.append("--agent-timeout")
+        if args.crawl_timeout is not _UNSET:
+            explicit_overrides.append("--crawl-timeout")
+        if args.qa_timeout is not _UNSET:
+            explicit_overrides.append("--qa-timeout")
+        if args.export_timeout is not _UNSET:
+            explicit_overrides.append("--export-timeout")
+        if args.profile_repair_attempts is not _UNSET:
+            explicit_overrides.append("--profile-repair-attempts")
+        if args.max_chapter_attempts is not _UNSET:
+            explicit_overrides.append("--max-chapter-attempts")
+        if args.formats is not _UNSET:
+            explicit_overrides.append("--formats")
+        if getattr(args, "auto_approve", False):
+            explicit_overrides.append("--auto-approve")
+        if getattr(args, "allow_warnings", False):
+            explicit_overrides.append("--allow-warnings")
+        if getattr(args, "allow_harness_permission_bypass", False):
+            explicit_overrides.append("--allow-harness-permission-bypass")
+        if args.agy_model is not None:
+            explicit_overrides.append("--agy-model")
+        if args.agy_translation_model is not None:
+            explicit_overrides.append("--agy-translation-model")
+
+        if explicit_overrides:
             return RunOutcome(
                 status="blocked",
                 run_id="none",
-                selected_span=(args.start_at, args.stop_after),
+                selected_span=("auto", "export"),
                 current_phase="cli_validation",
-                error_code="invalid_phase_span",
-                error_message=f"stop_after ({args.stop_after!r}) cannot precede start_at ({args.start_at!r})",
+                error_code="invalid_arguments",
+                error_message=f"--resume cannot be combined with phase selectors, model options, or policy overrides ({', '.join(explicit_overrides)})",
                 exit_code=3,
             )
 
-    effective_batch_size = OrchestratorConfig.resolve_batch_size(
-        explicit_batch_size=args.batch_size,
-        env_file=PROJECT_ROOT / ".env",
+        if workspace_arg is None:
+            return RunOutcome(
+                status="blocked",
+                run_id="none",
+                selected_span=("auto", "export"),
+                current_phase="cli_validation",
+                error_code="missing_workspace",
+                error_message="--workspace is required when using --resume",
+                exit_code=3,
+            )
+
+        try:
+            ws_path = Path(workspace_arg)
+            paths = workspace_paths(ws_path.parent, ws_path.name)
+            workspace_root = paths.root.resolve()
+        except Exception as e:
+            return RunOutcome(
+                status="blocked",
+                run_id="none",
+                selected_span=("auto", "export"),
+                current_phase="cli_validation",
+                error_code="invalid_workspace",
+                error_message=f"Invalid workspace path {workspace_arg!r}: {e}",
+                exit_code=3,
+            )
+
+        outcome = orchestrator.resume(workspace_root, decision=args.decision)
+    else:
+        # Normal (start) execution
+        start_at = args.start_at if args.start_at is not _UNSET else "auto"
+        stop_after = args.stop_after if args.stop_after is not _UNSET else "export"
+        formats_str = args.formats if args.formats is not _UNSET else "epub,azw3"
+        formats_list = [f.strip() for f in formats_str.split(",") if f.strip()]
+        batch_size_arg = args.batch_size if args.batch_size is not _UNSET else None
+        chapter_timeout_arg = (
+            args.chapter_timeout if args.chapter_timeout is not _UNSET else 1800
+        )
+        crawl_timeout_arg = (
+            args.crawl_timeout if args.crawl_timeout is not _UNSET else 21600
+        )
+        qa_timeout_arg = args.qa_timeout if args.qa_timeout is not _UNSET else 600
+        export_timeout_arg = (
+            args.export_timeout if args.export_timeout is not _UNSET else 600
+        )
+        profile_repair_attempts_arg = (
+            args.profile_repair_attempts
+            if args.profile_repair_attempts is not _UNSET
+            else 2
+        )
+        max_chapter_attempts_arg = (
+            args.max_chapter_attempts if args.max_chapter_attempts is not _UNSET else 3
+        )
+
+        phases = ("crawl", "translate", "qa", "export")
+        if start_at != "auto":
+            start_idx = phases.index(start_at)
+            stop_idx = phases.index(stop_after)
+            if start_idx > stop_idx:
+                return RunOutcome(
+                    status="blocked",
+                    run_id="none",
+                    selected_span=(start_at, stop_after),
+                    current_phase="cli_validation",
+                    error_code="invalid_phase_span",
+                    error_message=f"stop_after ({stop_after!r}) cannot precede start_at ({start_at!r})",
+                    exit_code=3,
+                )
+
+        if workspace_arg is None:
+            if not url_arg or not slug_arg:
+                return RunOutcome(
+                    status="blocked",
+                    run_id="none",
+                    selected_span=(start_at, stop_after),
+                    current_phase="cli_validation",
+                    error_code="missing_arguments",
+                    error_message="Both --url and --slug are required when --workspace is omitted",
+                    exit_code=3,
+                )
+            books_root = PROJECT_ROOT / "books"
+            try:
+                paths = workspace_paths(books_root, slug_arg)
+                workspace_root = paths.root
+            except Exception as e:
+                return RunOutcome(
+                    status="blocked",
+                    run_id="none",
+                    selected_span=(start_at, stop_after),
+                    current_phase="cli_validation",
+                    error_code="invalid_slug",
+                    error_message=f"Invalid book slug {slug_arg!r}: {e}",
+                    exit_code=3,
+                )
+        else:
+            try:
+                ws_path = Path(workspace_arg)
+                paths = workspace_paths(ws_path.parent, ws_path.name)
+                workspace_root = paths.root.resolve()
+            except Exception as e:
+                return RunOutcome(
+                    status="blocked",
+                    run_id="none",
+                    selected_span=(start_at, stop_after),
+                    current_phase="cli_validation",
+                    error_code="invalid_workspace",
+                    error_message=f"Invalid workspace path {workspace_arg!r}: {e}",
+                    exit_code=3,
+                )
+            if slug_arg is not None and workspace_root.name != slug_arg:
+                return RunOutcome(
+                    status="blocked",
+                    run_id="none",
+                    selected_span=(start_at, stop_after),
+                    current_phase="cli_validation",
+                    error_code="slug_mismatch",
+                    error_message=f"Workspace path slug {workspace_root.name!r} does not match --slug {slug_arg!r}",
+                    exit_code=3,
+                )
+
+        paths = workspace_paths(workspace_root.parent, workspace_root.name)
+        is_existing = paths.book.is_file()
+
+        if not is_existing:
+            if not url_arg:
+                return RunOutcome(
+                    status="blocked",
+                    run_id="none",
+                    selected_span=(start_at, stop_after),
+                    current_phase="cli_validation",
+                    error_code="missing_url",
+                    error_message="--url is required to initialize a new workspace",
+                    exit_code=3,
+                )
+            if not style_arg:
+                return RunOutcome(
+                    status="blocked",
+                    run_id="none",
+                    selected_span=(start_at, stop_after),
+                    current_phase="cli_validation",
+                    error_code="missing_style",
+                    error_message="--style is required to initialize a new workspace",
+                    exit_code=3,
+                )
+        else:
+            meta = load_yaml_model(paths.book, BookMetadata)
+            if url_arg is not None and meta.source_url and meta.source_url != url_arg:
+                return RunOutcome(
+                    status="blocked",
+                    run_id="none",
+                    selected_span=(start_at, stop_after),
+                    current_phase="cli_validation",
+                    error_code="source_url_mismatch",
+                    error_message=f"Workspace source URL {meta.source_url!r} does not match --url {url_arg!r}",
+                    exit_code=3,
+                )
+            if title_arg is not None or author_arg is not None:
+                return RunOutcome(
+                    status="blocked",
+                    run_id="none",
+                    selected_span=(start_at, stop_after),
+                    current_phase="cli_validation",
+                    error_code="creation_only_option",
+                    error_message="--title and --author are creation-only options and cannot be used on an existing workspace",
+                    exit_code=3,
+                )
+            if style_arg is not None and paths.style.is_file():
+                try:
+                    style_path = resolve_style_path(PROJECT_ROOT, Path(style_arg))
+                    existing_style = load_style(paths.style)
+                    proposed_style = load_style(style_path)
+                    if getattr(proposed_style, "genre_profile", None) != getattr(
+                        existing_style, "genre_profile", None
+                    ):
+                        return RunOutcome(
+                            status="blocked",
+                            run_id="none",
+                            selected_span=(start_at, stop_after),
+                            current_phase="cli_validation",
+                            error_code="style_mismatch",
+                            error_message=f"Workspace style does not match --style {style_arg!r}",
+                            exit_code=3,
+                        )
+                except Exception as e:
+                    return RunOutcome(
+                        status="blocked",
+                        run_id="none",
+                        selected_span=(start_at, stop_after),
+                        current_phase="cli_validation",
+                        error_code="style_mismatch",
+                        error_message=f"Invalid or mismatching style: {e}",
+                        exit_code=3,
+                    )
+            if limit_arg is not None and paths.source_scope.is_file():
+                from dich_truyen_agent.scope import load_source_scope
+
+                try:
+                    scope_rec = load_source_scope(paths.source_scope)
+                    if limit_arg != scope_rec.requested_limit:
+                        return RunOutcome(
+                            status="blocked",
+                            run_id="none",
+                            selected_span=(start_at, stop_after),
+                            current_phase="cli_validation",
+                            error_code="scope_conflict",
+                            error_message=f"Cannot change scope limit of existing scoped workspace from {scope_rec.requested_limit} to {limit_arg}",
+                            exit_code=3,
+                        )
+                except Exception:
+                    pass
+
+        effective_batch_size = OrchestratorConfig.resolve_batch_size(
+            explicit_batch_size=batch_size_arg,
+            env_file=PROJECT_ROOT / ".env",
+        )
+
+        try:
+            config = OrchestratorConfig(
+                workspace_root=workspace_root,
+                source_url=url_arg,
+                book_slug=slug_arg or workspace_root.name,
+                title=title_arg,
+                author=author_arg,
+                style=style_arg,
+                scope_limit=limit_arg,
+                start_at=start_at,
+                stop_after=stop_after,
+                formats=formats_list,
+                batch_size=effective_batch_size,
+                timeout_seconds=chapter_timeout_arg,
+                crawl_timeout_seconds=crawl_timeout_arg,
+                translation_timeout_seconds=chapter_timeout_arg,
+                qa_timeout_seconds=qa_timeout_arg,
+                export_timeout_seconds=export_timeout_arg,
+                max_repair_attempts=profile_repair_attempts_arg,
+                max_chapter_attempts=max_chapter_attempts_arg,
+                auto_approve=getattr(args, "auto_approve", False),
+                allow_warnings=getattr(args, "allow_warnings", False),
+                allow_harness_permission_bypass=getattr(
+                    args, "allow_harness_permission_bypass", False
+                ),
+                global_model=args.agy_model,
+                translation_model=args.agy_translation_model,
+            )
+        except Exception as e:
+            return RunOutcome(
+                status="blocked",
+                run_id="none",
+                selected_span=(start_at, stop_after),
+                current_phase="cli_validation",
+                error_code="config_validation_error",
+                error_message=str(e),
+                exit_code=3,
+            )
+
+        outcome = orchestrator.start(config)
+
+    # Interactive prompt loop
+    seen_gates: set[tuple[str, str | None, str | None]] = set()
+
+    is_interactive = (
+        sys.stdin.isatty()
+        and sys.stdout.isatty()
+        and not getattr(args, "json", False)
+        and not getattr(args, "auto_approve", False)
     )
-    formats_list = [f.strip() for f in args.formats.split(",") if f.strip()]
 
-    try:
-        config = OrchestratorConfig(
-            workspace_root=workspace_root,
-            start_at=args.start_at,
-            stop_after=args.stop_after,
-            formats=formats_list,
-            batch_size=effective_batch_size,
-            timeout_seconds=args.chapter_timeout,
-            crawl_timeout_seconds=args.crawl_timeout,
-            translation_timeout_seconds=args.chapter_timeout,
-            qa_timeout_seconds=args.qa_timeout,
-            export_timeout_seconds=args.export_timeout,
-            max_repair_attempts=args.profile_repair_attempts,
-            max_chapter_attempts=args.max_chapter_attempts,
-            auto_approve=args.auto_approve,
-            allow_warnings=args.allow_warnings,
-            allow_harness_permission_bypass=args.allow_harness_permission_bypass,
-            global_model=args.agy_model,
-            translation_model=args.agy_translation_model,
+    while outcome.status == "paused" and is_interactive:
+        gate_key = (
+            outcome.run_id,
+            outcome.pending_approval,
+            outcome.approval_report_hash,
         )
-    except Exception as e:
-        return RunOutcome(
-            status="blocked",
-            run_id="none",
-            selected_span=(args.start_at, args.stop_after),
-            current_phase="cli_validation",
-            error_code="config_validation_error",
-            error_message=str(e),
-            exit_code=3,
-        )
+        if gate_key in seen_gates:
+            print(
+                "Repeated approval interrupt for identical gate and report hash. Halting."
+            )
+            break
+        seen_gates.add(gate_key)
 
-    return orchestrator.start(config)
+        _print_paused_approval_summary(workspace_root, outcome)
+
+        try:
+            choice = input("Approve and proceed? [y/N]: ").strip().lower()
+        except (EOFError, KeyboardInterrupt):
+            choice = ""
+
+        if choice in ("y", "yes"):
+            outcome = orchestrator.resume(workspace_root, decision="approve")
+        elif choice in ("n", "no"):
+            outcome = orchestrator.resume(workspace_root, decision="reject")
+            break
+        else:
+            break
+
+    outcome.data["workspace_root"] = str(workspace_root)
+    return outcome
 
 
 def main() -> None:
