@@ -1,4 +1,5 @@
 """Verify OpenCode-native skills are discoverable with valid frontmatter."""
+
 from pathlib import Path
 import re
 
@@ -7,6 +8,7 @@ import pytest
 OC_SKILLS_DIR = Path(__file__).parent.parent / ".opencode" / "skill"
 
 EXPECTED_SKILLS = [
+    "oc-orchestrate-book",
     "oc-crawl-book",
     "oc-translate-book",
     "oc-check-translation",

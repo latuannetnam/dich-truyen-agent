@@ -1,4 +1,5 @@
 """Verify AGENTS.md references generated harness skill adapters."""
+
 from pathlib import Path
 
 import pytest
@@ -6,18 +7,22 @@ import pytest
 AGENTS_MD = Path(__file__).parent.parent / "AGENTS.md"
 
 EXPECTED_REFS = [
+    "ag-orchestrate-book",
     "ag-crawl-book",
     "ag-translate-book",
     "ag-check-translation",
     "ag-export-book",
+    "cc-orchestrate-book",
     "cc-crawl-book",
     "cc-translate-book",
     "cc-check-translation",
     "cc-export-book",
+    "oc-orchestrate-book",
     "oc-crawl-book",
     "oc-translate-book",
     "oc-check-translation",
     "oc-export-book",
+    "codex-orchestrate-book",
     "codex-crawl-book",
     "codex-translate-book",
     "codex-check-translation",

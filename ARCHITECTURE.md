@@ -10,7 +10,7 @@ For setup and everyday usage, see [README.md](README.md).
 
 ## Architecture Versioning
 
-This document describes **Translation Orchestration Architecture v2.4**.
+This document describes **Translation Orchestration Architecture v2.5**.
 
 Architecture changes are versioned when they alter durable workspace contracts,
 CLI orchestration contracts, generated harness behavior, or recovery semantics.
@@ -43,6 +43,13 @@ Current versions:
   rather than a separate adapter tree. A `guide_profiles` manifest key renders a
   Cowork capability panel into `AGENTS.md` and `CLAUDE.md`, and the external-LLM
   guardrail is enforced at instruction level because Cowork does not fire hooks.
+- **v2.5 - LangGraph agent orchestrator & durable checkpoints:** Replaces the
+  multi-tier subagent coordinator hierarchy with a deterministic LangGraph-based
+  orchestrator, backed by durable SQLite checkpoints (`.orchestrator/checkpoints.sqlite3`)
+  and the unified `orchestrate` CLI subcommand. Harness skills become thin
+  wrappers around `orchestrate`. Coordinator subagents and workflows are retired.
+  See ADR-0006.
+
 
 Versioned changes must update:
 
@@ -759,3 +766,37 @@ agents are generated. Only the cc dispatch text and the Cowork panel change.
 - The `cw` panel documents the isolated-venv CLI, the not-dispatchable reality, and
   the general-agent dispatch.
 - `tools/sync_harness_adapters.py --check` reports a clean tree.
+
+### ADR-0006: LangGraph Agent Orchestrator & Durable SQLite Checkpoints
+
+- **Status:** Accepted
+- **Date:** 2026-09-25
+- **Architecture version:** v2.5
+- **Supersedes:** Multi-tier harness coordinator subagents and harness-specific translation loops
+
+#### Context
+
+Previous iterations relied on coordinator subagents (`ag_coordinator`, `cc_coordinator`, etc.)
+or prompt-driven Main Agent loops to orchestrate translation batches, gate approvals,
+and handle errors. This had several drawbacks:
+1. Each harness required disparate dispatch logic (workflows in Claude Code, general agent tasks in OpenCode, subagents in Antigravity).
+2. Coordinating long-running workflows across hundreds or thousands of chapters risked context overflow and unrecoverable interruptions.
+3. Pause, resume, and gate verification logic was fragmented across separate commands (`approve-crawl`, `approve-qa`, `check-gate`).
+
+#### Decision
+
+Implement a unified, deterministic LangGraph-based orchestrator in `src/dich_truyen_agent/orchestrator/`
+exposed through `main.py orchestrate`:
+- State graph manages the complete lifecycle: `crawl` -> `crawl_decision` -> `translate` -> `qa` -> `qa_decision` -> `export`.
+- Persistence backed by `SqliteSaver` in `books/<book-slug>/.orchestrator/checkpoints.sqlite3`.
+- Bounded batch loops (`TranslationState` with `batch_size`, `max_chapters`, `consecutive_failures`) maintain token isolation.
+- Native harness translator subagent (`agy`) is invoked inside the worker boundary; the Main Agent only receives compact CLI JSON outputs.
+- Harness skill adapters (`ag-*`, `cc-*`, `oc-*`, `codex-*`) are simplified to thin CLI entrypoints targeting `main.py orchestrate`.
+- Retired legacy coordinator subagents and Claude workflow JS files.
+
+#### Consequences
+
+- One single orchestrator engine runs across all harnesses on Windows and Linux.
+- Runs can be interrupted at any chapter or decision point and resumed deterministically with `--resume`.
+- Gate checks and approvals are automated with `--auto-approve` or interactive decisions (`--decision approve`).
+- Cross-platform file locking (`WorkspaceLock`) prevents concurrent mutations.

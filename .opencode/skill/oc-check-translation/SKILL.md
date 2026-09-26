@@ -7,39 +7,26 @@ description: "Use when running the check-translation phase of the Chinese-to-Vie
 
 # OC-Check Translation
 
-Deterministic, non-mutating quality check pipeline evaluating structural consistency, CJK residue, character length ratios, and glossary mapping conflicts. Creating a cryptographically secure `qa-approved` checkpoint unlocks final ebook exports.
+Thin compatibility entrypoint for the quality assurance phase of the novel translation pipeline. Maps directly to the shared orchestrator with `--start-at qa --stop-after qa`.
 
 ## Workflow
 
-1. **Run Quality Check Scan**:
-   Execute the deterministic validation engine to audit all translated chapters:
+1. **Execute QA Scan**:
+   Run deterministic quality assurance through the orchestrator:
    ```powershell
    $env:PYTHONUTF8=1
-   uv run python main.py check-translation --workspace books/<book-slug>
+   uv run python main.py orchestrate --workspace books/<book-slug> --start-at qa --stop-after qa
    ```
-   - This scan is completely non-mutating and will **never** modify any raw or translated text files.
-   - Outputs a detailed findings report to `reports/qa-report.yaml`.
-   - Renders a clean Markdown summary table to stdout classifying issues by Category, Chapter, Severity, and details.
+   - Audits all translated chapters for structural consistency, Chinese residue, abnormal length ratios, and glossary conflicts.
+   - Non-mutating scan outputs `reports/qa-report.yaml`.
+   - If zero errors and zero warnings are found, QA approval is granted automatically and recorded in the `qa-approved` checkpoint.
 
-2. **Diagnose and Resolve Findings**:
-   Inspect findings reported in the terminal or `reports/qa-report.yaml` using bounded file-reading:
-   - **Structural Findings:** Fix any missing chapters, empty files, or state inconsistencies in `state.yaml`.
-   - **Chinese Residue Warnings:** Highlighted CJK characters or Chinese punctuation marks remaining in Vietnamese text. Manually clean these lines in the translation files using the active harness editing capability.
-   - **Abnormal Lengths:** Warnings for chapters where the character length ratio relative to raw Chinese is too low (< 0.6) or too high (> 2.0) - indicating truncated prose or repeat output loops.
-   - **Glossary Conflicts:** Terms flagged in `reports/glossary-conflicts.yaml`. Manually edit `glossary.yaml` to lock mapping or clear conflict listings.
+2. **Handle Findings and Approval**:
+   - If warnings are present, the run pauses for manual operator decision (exit code 2). Inspect `reports/qa-report.yaml` and resume:
+     ```powershell
+     $env:PYTHONUTF8=1
+     uv run python main.py orchestrate --workspace books/<book-slug> --resume --decision approve
+     ```
+   - If critical errors are found, the run blocks (exit code 3). Fix reported issues in translation files, then rerun.
 
-3. **Approve QA Checkpoint**:
-   Once errors are resolved or warnings reviewed, lock and authorize the workspace for export:
-   ```powershell
-   $env:PYTHONUTF8=1
-   uv run python main.py approve-qa --workspace books/<book-slug>
-   ```
-   - Blocks approval if there are outstanding critical `error` severity findings.
-   - Evidence hashing records the checksums of the QA report and every single promoted translation file.
-   - Produces the secure `checkpoints/qa-approved.yaml` checkpoint file enabling the downstream export workflows.
-
-## Runtime Notes
-
-- The QA scan is safe to run repeatedly - it never mutates files.
-- When manually fixing residue or length issues, edit `books/<book-slug>/translations/chuong-NNNN.txt` directly with the active harness editing capability, then re-run the scan.
-- Do NOT bulk-read every translation file into your main context. Trust the YAML report summaries.
+See the orchestrate-book skill for full parameter reference and resume workflows.

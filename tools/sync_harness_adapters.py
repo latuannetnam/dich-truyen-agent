@@ -1,14 +1,39 @@
 from __future__ import annotations
 
 import argparse
-import json
-import shutil
 from dataclasses import dataclass
+import json
 from pathlib import Path
-
+import shutil
 
 ROOT = Path(__file__).resolve().parent.parent
 SOURCE = ROOT / ".harness" / "source"
+
+OBSOLETE_GENERATED_PATHS = [
+    # Legacy unprefixed skill folders
+    ROOT / ".agent" / "skills" / "crawl-book",
+    ROOT / ".agent" / "skills" / "translate-book",
+    ROOT / ".agent" / "skills" / "check-translation",
+    ROOT / ".agent" / "skills" / "export-book",
+    ROOT / ".claude" / "skills" / "crawl-book",
+    ROOT / ".claude" / "skills" / "translate-book",
+    ROOT / ".claude" / "skills" / "check-translation",
+    ROOT / ".claude" / "skills" / "export-book",
+    # Retired agent and workflow adapters
+    ROOT / ".agent" / "agents" / "ag_coordinator.md",
+    ROOT / ".claude" / "agents" / "cc_coordinator.md",
+    ROOT / ".claude" / "agents" / "cc_metadata_translator.md",
+    ROOT / ".claude" / "agents" / "cc_translator.md",
+    ROOT / ".claude" / "agents" / "translator.md",
+    ROOT / ".claude" / "agents" / "metadata_translator.md",
+    ROOT / ".claude" / "agents" / "coordinator.md",
+    ROOT / ".claude" / "workflows" / "translate-book.js",
+    ROOT / ".opencode" / "agent" / "oc-metadata-translator.md",
+    ROOT / ".opencode" / "agent" / "oc-translator.md",
+    ROOT / ".codex" / "agents" / "codex_coordinator.md",
+    ROOT / ".codex" / "agents" / "codex_metadata_translator.md",
+    ROOT / ".codex" / "agents" / "codex_translator.md",
+]
 
 
 @dataclass(frozen=True)
@@ -58,124 +83,24 @@ def skill_frontmatter(harness: str, skill: str) -> str:
     if harness == "ag":
         return (
             "---\n"
-            f"name: \"{name}\"\n"
-            f"description: \"{description}\"\n"
+            f'name: "{name}"\n'
+            f'description: "{description}"\n'
             "metadata:\n"
-            f"  short-description: \"{description}\"\n"
+            f'  short-description: "{description}"\n'
             "---\n\n"
         )
-    return "---\n" f"name: {name}\n" f"description: \"{description}\"\n" "---\n\n"
-
-
-def translate_orchestration(harness: str) -> str:
-    if harness == "oc":
-        return """### Step 2: Load Effective Batch Size
-Fetch translation settings before entering the loop:
-```bash
-$env:PYTHONUTF8=1
-uv run python main.py show-translation-settings --json
-```
-Use `data.batch_size` unless the user supplied an explicit runtime override. The built-in default is 5.
-
-### Step 3: Run the Embedded Compact OpenCode Loop
-The Main Agent fetches the next deterministic work item:
-```bash
-$env:PYTHONUTF8=1
-uv run python main.py next-translation-work-item --workspace books/<book-slug> --json
-```
-* **If completed:** Report book completion with compact counts only.
-* **If blocked:** Stop and report the gap to the user for repair.
-* **If pending:** Continue with the next pending chapter inside this OpenCode skill loop.
-
-### Step 4: Dispatch the Isolated OpenCode Worker
-Use the OpenCode `task(` dispatch shown above with `subagent_type="general"` and `oc-translator` instructions, passing the absolute paths reported by `next-translation-work-item`, including `glossary_context_path`.
-
-### Step 5: Lightweight Staging Verification
-Run structural verification through the CLI:
-```bash
-$env:PYTHONUTF8=1
-uv run python main.py verify-staged-chapter --workspace books/<book-slug> --chapter-id <chapter_id> --json
-```
-This does not replace glossary validation.
-
-### Step 6: Atomically Promote and Continue
-Promote the chapter:
-```bash
-$env:PYTHONUTF8=1
-uv run python main.py promote-chapter --workspace books/<book-slug> --chapter-id <chapter_id> --json
-```
-If successful, loop back to Step 3 for the next pending chapter until the effective `batch_size` limit is reached.
-If promotion is blocked by glossary consistency, retry the same chapter and include the `promote-chapter` reason in the translator prompt so the next attempt uses the existing glossary mapping and avoids rejected aliases.
-* **Retries:** Retry failures up to 3 times with polite backoffs before halting.
-* **Compact output:** Return only `{status, processed_count, chapter_start, chapter_end, next_chapter_id, failure_reason}`. Do not return cumulative chapter lists."""
-
-    return """### Step 2: Load Effective Batch Size
-Fetch translation settings before dispatching a coordinator:
-```bash
-$env:PYTHONUTF8=1
-uv run python main.py show-translation-settings --json
-```
-Use `data.batch_size` unless the user supplied an explicit runtime override. The built-in default is 5.
-
-### Step 3: Fetch Progress and Dispatch Compact Coordinator
-The Main Agent fetches the next deterministic work item:
-```bash
-$env:PYTHONUTF8=1
-uv run python main.py next-translation-work-item --workspace books/<book-slug> --json
-```
-* **If completed:** Report book completion with compact counts only.
-* **If blocked:** Stop and report the gap to the user for repair.
-* **If pending:** The Main Agent spawns a **Coordinator Subagent** to handle the next `batch_size` pending chapters using the harness-native dispatch block above.
-
-> [!IMPORTANT]
-> **Enforced Stateless Iteration:**
-> 1. **Strict Batch Limit:** You must NEVER instruct a single Coordinator to translate the entire book. You must always specify the effective `batch_size` in your prompt.
-> 2. **Fresh Instances:** When the Coordinator completes its batch, you must spawn a completely NEW Coordinator instance. Do not send follow-up instructions to the previous subagent.
-> 3. **Loop:** Repeat this cycle of spawning fresh Coordinators until `next-translation-work-item` returns `completed`.
-> 4. **Compact Output:** Do not accumulate chapter arrays in the Main Agent. Re-query CLI state after each batch.
-
-### Step 4: The Coordinator Micro-Loop
-**The following steps (4 to 8) are executed purely by the Coordinator Subagent.**
-Inside the Coordinator, fetch the exact next pending work item:
-```bash
-$env:PYTHONUTF8=1
-uv run python main.py next-translation-work-item --workspace books/<book-slug> --json
-```
-Parse `data`. Stop on `completed`, `blocked`, or `error`.
-
-### Step 5: Spawn the Translator Subagent (Coordinator)
-The Coordinator spawns the Translator subagent using the harness-native mechanism in the dispatch block, passing the absolute paths reported by `next-translation-work-item`, including `glossary_context_path`.
-
-### Step 6: Lightweight Staging Verification (Coordinator)
-The Coordinator runs structural verification through the CLI:
-```bash
-$env:PYTHONUTF8=1
-uv run python main.py verify-staged-chapter --workspace books/<book-slug> --chapter-id <chapter_id> --json
-```
-This does not replace glossary validation.
-
-### Step 7: Atomically Promote and Loop (Coordinator)
-The Coordinator promotes the chapter:
-```bash
-$env:PYTHONUTF8=1
-uv run python main.py promote-chapter --workspace books/<book-slug> --chapter-id <chapter_id> --json
-```
-If successful, the Coordinator loops back to Step 4 until its assigned batch limit is reached.
-If promotion is blocked by glossary consistency, retry the same chapter and include the `promote-chapter` reason in the translator prompt so the next attempt uses the existing glossary mapping and avoids rejected aliases.
-* **Retries:** Coordinator retries failures up to 3 times with polite backoffs before halting.
-
-### Step 8: Compact Coordinator Result
-Return only `{status, processed_count, chapter_start, chapter_end, next_chapter_id, failure_reason}`. Do not return cumulative chapter lists or per-chapter logs."""
+    return f'---\nname: {name}\ndescription: "{description}"\n---\n\n'
 
 
 def render_skill(manifest: dict, harness: str, skill: str) -> RenderedFile:
     body = read_text(SOURCE / "skills" / f"{skill}.md")
     body = body.replace("{SKILL_TITLE}", skill_title(harness, skill))
-    if skill == "translate-book":
-        dispatch = read_text(SOURCE / "dispatch" / f"translate-{harness}.md").strip()
-        body = body.replace("{TRANSLATE_DISPATCH}", dispatch)
-        body = body.replace("{TRANSLATE_ORCHESTRATION}", translate_orchestration(harness))
-    content = skill_frontmatter(harness, skill) + generated_header(manifest) + body.rstrip() + "\n"
+    content = (
+        skill_frontmatter(harness, skill)
+        + generated_header(manifest)
+        + body.rstrip()
+        + "\n"
+    )
     path = {
         "ag": ROOT / ".agent" / "skills" / f"ag-{skill}" / "SKILL.md",
         "cc": ROOT / ".claude" / "skills" / f"cc-{skill}" / "SKILL.md",
@@ -187,24 +112,7 @@ def render_skill(manifest: dict, harness: str, skill: str) -> RenderedFile:
 
 def agent_frontmatter(harness: str, agent: str) -> str:
     agent_name = f"{harness}_{agent.replace('-', '_')}"
-    if harness == "oc":
-        return (
-            "---\n"
-            f"description: \"Generated OpenCode {agent} agent.\"\n"
-            "mode: subagent\n"
-            "model: inherit\n"
-            "hidden: true\n"
-            "tools:\n"
-            "  read: true\n"
-            "  write: true\n"
-            "  glob: true\n"
-            "  grep: true\n"
-            "  bash: false\n"
-            "permission:\n"
-            "  bash: deny\n"
-            "---\n\n"
-        )
-    tools = "Bash, Read, InvokeSubagent" if agent == "coordinator" else "Read, Write, Glob, Grep"
+    tools = "Read, Write, Glob, Grep"
     return (
         "---\n"
         f"name: {agent_name}\n"
@@ -216,19 +124,17 @@ def agent_frontmatter(harness: str, agent: str) -> str:
 
 
 def render_agent(manifest: dict, harness: str, agent: str) -> RenderedFile | None:
-    if agent == "coordinator" and harness == "oc":
+    if harness != "ag":
         return None
     body = read_text(SOURCE / "agents" / f"{agent}.md")
-    agent_file = f"{harness}_{agent.replace('-', '_')}.md"
-    if harness == "oc":
-        agent_file = f"oc-{agent}.md"
-    path = {
-        "ag": ROOT / ".agent" / "agents" / agent_file,
-        "cc": ROOT / ".claude" / "agents" / agent_file,
-        "oc": ROOT / ".opencode" / "agent" / agent_file,
-        "codex": ROOT / ".codex" / "agents" / agent_file,
-    }[harness]
-    content = agent_frontmatter(harness, agent) + generated_header(manifest) + body.rstrip() + "\n"
+    agent_file = f"ag_{agent.replace('-', '_')}.md"
+    path = ROOT / ".agent" / "agents" / agent_file
+    content = (
+        agent_frontmatter("ag", agent)
+        + generated_header(manifest)
+        + body.rstrip()
+        + "\n"
+    )
     return RenderedFile(path=path, content=content)
 
 
@@ -322,10 +228,10 @@ def render_all() -> list[RenderedFile]:
     for harness in manifest["harnesses"]:
         for skill in manifest["skills"]:
             rendered.append(render_skill(manifest, harness, skill))
-        for agent in manifest["agents"]:
-            agent_file = render_agent(manifest, harness, agent)
-            if agent_file is not None:
-                rendered.append(agent_file)
+    for agent in manifest["agents"]:
+        agent_file = render_agent(manifest, "ag", agent)
+        if agent_file is not None:
+            rendered.append(agent_file)
     rendered.extend(render_guides(manifest))
     rendered.append(render_opencode_json(manifest))
     rendered.append(render_antigravity_hook(manifest))
@@ -334,26 +240,17 @@ def render_all() -> list[RenderedFile]:
 
 
 def remove_legacy_outputs() -> None:
-    for path in [
-        ROOT / ".agent" / "skills" / "crawl-book",
-        ROOT / ".agent" / "skills" / "translate-book",
-        ROOT / ".agent" / "skills" / "check-translation",
-        ROOT / ".agent" / "skills" / "export-book",
-        ROOT / ".claude" / "skills" / "crawl-book",
-        ROOT / ".claude" / "skills" / "translate-book",
-        ROOT / ".claude" / "skills" / "check-translation",
-        ROOT / ".claude" / "skills" / "export-book",
-    ]:
-        if path.exists():
+    for path in OBSOLETE_GENERATED_PATHS:
+        if not path.resolve().is_relative_to(ROOT.resolve()):
+            continue
+        if path.is_dir():
             shutil.rmtree(path)
-
-    for path in [
-        ROOT / ".claude" / "agents" / "translator.md",
-        ROOT / ".claude" / "agents" / "metadata_translator.md",
-        ROOT / ".claude" / "agents" / "coordinator.md",
-    ]:
-        if path.exists():
+        elif path.is_file():
             path.unlink()
+
+    workflows_dir = ROOT / ".claude" / "workflows"
+    if workflows_dir.is_dir() and not any(workflows_dir.iterdir()):
+        workflows_dir.rmdir()
 
 
 def write_outputs(rendered: list[RenderedFile]) -> None:
@@ -372,9 +269,15 @@ def check_outputs(rendered: list[RenderedFile]) -> int:
         current = item.path.read_text(encoding="utf-8")
         if current != item.content:
             stale.append(f"stale: {item.path.relative_to(ROOT)}")
-    if stale:
+
+    obsolete = []
+    for path in OBSOLETE_GENERATED_PATHS:
+        if path.exists():
+            obsolete.append(f"obsolete: {path.relative_to(ROOT)}")
+
+    if stale or obsolete:
         print("Generated adapters are out of date:")
-        for entry in stale:
+        for entry in stale + obsolete:
             print(f"- {entry}")
         return 1
     print("all generated adapters are current")

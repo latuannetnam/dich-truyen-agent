@@ -1,4 +1,5 @@
 """Verify root guide files are generated from shared main-agent logic."""
+
 from pathlib import Path
 
 ROOT = Path(__file__).parent.parent
@@ -12,7 +13,12 @@ def test_agents_md_is_generated_cross_harness_guide():
     text = read("AGENTS.md")
     assert "GENERATED from .harness/source" in text
     assert "Workspace Lifecycle" in text
-    for skill in ["ag-crawl-book", "cc-crawl-book", "oc-crawl-book", "codex-crawl-book"]:
+    for skill in [
+        "ag-crawl-book",
+        "cc-crawl-book",
+        "oc-crawl-book",
+        "codex-crawl-book",
+    ]:
         assert skill in text
 
 

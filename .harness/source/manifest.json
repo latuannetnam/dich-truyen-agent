@@ -6,8 +6,8 @@
     "oc": "oc",
     "codex": "codex"
   },
-  "skills": ["crawl-book", "translate-book", "check-translation", "export-book"],
-  "agents": ["translator", "metadata-translator", "coordinator"],
+  "skills": ["orchestrate-book", "crawl-book", "translate-book", "check-translation", "export-book"],
+  "agents": ["translator", "metadata-translator"],
   "guide_profiles": ["cw"],
   "opencode_extra_denied_skills": ["brainstorming", "writing-plans"],
   "generated_header": "<!-- GENERATED from .harness/source by tools/sync_harness_adapters.py. Do not edit directly. -->"

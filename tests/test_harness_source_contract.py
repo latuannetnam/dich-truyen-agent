@@ -1,4 +1,5 @@
 """Verify the canonical harness source tree is complete."""
+
 import json
 from pathlib import Path
 
@@ -8,28 +9,19 @@ ROOT = Path(__file__).parent.parent
 SOURCE = ROOT / ".harness" / "source"
 
 EXPECTED_SKILLS = [
+    "orchestrate-book",
     "crawl-book",
     "translate-book",
     "check-translation",
     "export-book",
 ]
 EXPECTED_HARNESSES = ["ag", "cc", "oc", "codex"]
-EXPECTED_AGENTS = ["translator", "metadata-translator", "coordinator"]
-DISPATCH_MARKERS = {
-    "ag": ["invoke_subagent", "ag_translator", "ag_metadata_translator"],
-    "cc": ["Agent({", "cc_translator", "cc_metadata_translator"],
-    "oc": ["task(", 'subagent_type="general"', "oc-translator"],
-    "codex": [
-        "spawn_agent",
-        "codex_translator",
-        "native Codex subagent delegation",
-    ],
-}
+EXPECTED_AGENTS = ["translator", "metadata-translator"]
 PANEL_MARKERS = {
-    "ag": ["`ag-crawl-book`", "run_command", "view_file", "invoke_subagent"],
-    "cc": ["`cc-crawl-book`", "Bash", "Read", "Agent", "Workflow"],
-    "oc": ["`oc-crawl-book`", "bash", "read", "task", "opencode.json"],
-    "codex": ["`codex-crawl-book`", "spawn_agent", "shell_command"],
+    "ag": ["`ag-orchestrate-book`", "`ag-crawl-book`", "run_command", "view_file"],
+    "cc": ["`cc-orchestrate-book`", "`cc-crawl-book`", "Bash", "Read"],
+    "oc": ["`oc-orchestrate-book`", "`oc-crawl-book`", "bash", "read", "opencode.json"],
+    "codex": ["`codex-orchestrate-book`", "`codex-crawl-book`", "shell_command"],
 }
 
 
@@ -49,7 +41,10 @@ def test_manifest_declares_all_harnesses_and_prefixes():
     }
     assert manifest["skills"] == EXPECTED_SKILLS
     assert manifest["agents"] == EXPECTED_AGENTS
-    assert manifest["opencode_extra_denied_skills"] == ["brainstorming", "writing-plans"]
+    assert manifest["opencode_extra_denied_skills"] == [
+        "brainstorming",
+        "writing-plans",
+    ]
     assert "GENERATED from .harness/source" in manifest["generated_header"]
 
 
@@ -67,17 +62,25 @@ def test_shared_skill_source_exists(skill):
     assert "oc-" not in text
 
 
-@pytest.mark.parametrize("harness", EXPECTED_HARNESSES)
-def test_translate_dispatch_source_exists(harness):
-    path = SOURCE / "dispatch" / f"translate-{harness}.md"
-    assert path.is_file(), f"Missing dispatch source {path}"
+def test_translate_skill_maps_to_orchestrator():
+    text = (SOURCE / "skills" / "translate-book.md").read_text(encoding="utf-8")
+    assert "--start-at translate --stop-after translate" in text
+    assert "next-translation-work-item" not in text
+    assert "invoke_subagent" not in text
+
+
+def test_orchestrate_skill_source_exists():
+    path = SOURCE / "skills" / "orchestrate-book.md"
+    assert path.is_file(), f"Missing {path}"
     text = path.read_text(encoding="utf-8")
-    assert text.strip(), f"Empty dispatch source {path}"
-    for marker in DISPATCH_MARKERS[harness]:
-        assert marker in text
+    assert "--start-at" in text
+    assert "--stop-after" in text
+    assert "--auto-approve" in text
+    assert "--resume" in text
+    assert "0" in text and "2" in text and "3" in text and "1" in text
 
 
-@pytest.mark.parametrize("agent", ["translator", "metadata-translator", "coordinator"])
+@pytest.mark.parametrize("agent", EXPECTED_AGENTS)
 def test_agent_source_exists(agent):
     path = SOURCE / "agents" / f"{agent}.md"
     assert path.is_file(), f"Missing shared agent source {path}"
@@ -109,7 +112,9 @@ def test_guardrail_policy_source_exists():
 
 
 def test_crawl_skill_describes_profile_driven_browser_settings() -> None:
-    text = (ROOT / ".harness" / "source" / "skills" / "crawl-book.md").read_text(encoding="utf-8")
+    text = (ROOT / ".harness" / "source" / "skills" / "crawl-book.md").read_text(
+        encoding="utf-8"
+    )
 
     assert "browser:" in text
     assert "named browser strategy" in text
@@ -152,25 +157,13 @@ def test_cowork_panel_source_exists():
     for marker in [
         "Cowork",
         "built on Claude Code",
+        "cc-orchestrate-book",
         "cc-translate-book",
         "hooks do not fire",
         "instruction level",
         "uv run --isolated",
-        "not dispatchable",
-        "general agent",
-        "cc_translator.md",
-        "general-agent dispatch",
     ]:
         assert marker in text, f"Missing marker {marker!r} in cw panel"
-
-
-def test_cc_dispatch_documents_cowork_fallback():
-    text = (SOURCE / "dispatch" / "translate-cc.md").read_text(encoding="utf-8")
-    assert "Cowork Fallback Dispatch" in text
-    assert "general-purpose" in text
-    assert "cc_translator.md" in text
-    assert "uv run --isolated" in text
-    assert "no separate subagent tier" in text
 
 
 def test_architecture_documents_cowork_support():

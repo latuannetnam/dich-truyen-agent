@@ -80,63 +80,37 @@ uv run python main.py init-book --slug <book-slug> --title "<title>" --source-ur
 This creates `books/<book-slug>/` with metadata, state, style, staging,
 translation, report, and checkpoint directories.
 
-### 2. Crawl Raw Chapters
+### 2. Run Pipeline Orchestration
 
-Use the crawl skill for your active harness:
-
-```text
-$ag-crawl-book books/<book-slug>/
-$cc-crawl-book books/<book-slug>/
-$oc-crawl-book books/<book-slug>/
-$codex-crawl-book books/<book-slug>/
-```
-
-Approve crawl evidence after reviewing `reports/crawl.yaml`:
+You can run the full end-to-end pipeline or any phase slice with the unified orchestrator:
 
 ```powershell
 $env:PYTHONUTF8=1
-uv run python main.py approve-crawl --workspace books/<book-slug>
+uv run python main.py orchestrate --workspace books/<book-slug> [--start-at <phase>] [--stop-after <phase>] [--auto-approve]
 ```
 
-### 3. Translate Sequentially
-
-Use the translate skill for your active harness:
-
+Or trigger through the harness-specific orchestrate skill:
 ```text
-$ag-translate-book books/<book-slug>/
-$cc-translate-book books/<book-slug>/
-$oc-translate-book books/<book-slug>/
-$codex-translate-book books/<book-slug>/
+$ag-orchestrate-book books/<book-slug>/
+$cc-orchestrate-book books/<book-slug>/
+$oc-orchestrate-book books/<book-slug>/
+$codex-orchestrate-book books/<book-slug>/
 ```
 
-Translation resumes automatically from the next pending chapter. The workflow
-translates chapters strictly in order and promotes each successful chapter into
-`translations/`.
-
-### 4. Check Translation Quality
-
-```text
-$ag-check-translation books/<book-slug>/
-$cc-check-translation books/<book-slug>/
-$oc-check-translation books/<book-slug>/
-$codex-check-translation books/<book-slug>/
-```
-
-Approve QA after reviewing `reports/qa-report.yaml`:
-
+If the run pauses for manual gate approval (exit code 2), inspect reports and resume:
 ```powershell
 $env:PYTHONUTF8=1
-uv run python main.py approve-qa --workspace books/<book-slug>
+uv run python main.py orchestrate --workspace books/<book-slug> --resume --decision approve
 ```
 
-### 5. Export Ebook Formats
+### 3. Individual Phase Skills (Thin Compatibility Wrappers)
 
-```text
-$ag-export-book books/<book-slug>/ epub,azw3,mobi,pdf
-$cc-export-book books/<book-slug>/ epub,azw3,mobi,pdf
-$oc-export-book books/<book-slug>/ epub,azw3,mobi,pdf
-$codex-export-book books/<book-slug>/ epub,azw3,mobi,pdf
-```
+Individual phase skills delegate directly to `orchestrate --start-at <phase> --stop-after <phase>`:
+
+- **Crawl:** `ag-crawl-book`, `cc-crawl-book`, `oc-crawl-book`, `codex-crawl-book`
+- **Translate:** `ag-translate-book`, `cc-translate-book`, `oc-translate-book`, `codex-translate-book`
+- **QA:** `ag-check-translation`, `cc-check-translation`, `oc-check-translation`, `codex-check-translation`
+- **Export:** `ag-export-book`, `cc-export-book`, `oc-export-book`, `codex-export-book`
 
 Outputs are written to `books/<book-slug>/exports/`.
 
@@ -146,12 +120,14 @@ Outputs are written to `books/<book-slug>/exports/`.
 
 | Phase | Antigravity | Claude Code | OpenCode | Codex |
 |---|---|---|---|---|
+| Orchestrate | `ag-orchestrate-book` | `cc-orchestrate-book` | `oc-orchestrate-book` | `codex-orchestrate-book` |
 | Crawl | `ag-crawl-book` | `cc-crawl-book` | `oc-crawl-book` | `codex-crawl-book` |
 | Translate | `ag-translate-book` | `cc-translate-book` | `oc-translate-book` | `codex-translate-book` |
 | QA | `ag-check-translation` | `cc-check-translation` | `oc-check-translation` | `codex-check-translation` |
 | Export | `ag-export-book` | `cc-export-book` | `oc-export-book` | `codex-export-book` |
 
 ---
+
 
 ## Common CLI Commands
 

@@ -1,4 +1,5 @@
 """Verify the Cowork capability panel is rendered into both generated guides."""
+
 from pathlib import Path
 
 import pytest
@@ -35,10 +36,14 @@ def test_no_cowork_adapter_tree_generated():
             assert not child.name.startswith("cw-"), child
 
 
-def test_generated_cc_translate_skill_has_cowork_fallback():
-    skill = ROOT / ".claude" / "skills" / "cc-translate-book" / "SKILL.md"
-    assert skill.is_file(), f"Missing {skill}"
-    text = skill.read_text(encoding="utf-8")
-    assert "Cowork Fallback Dispatch" in text
-    assert "general-purpose" in text
-    assert ".claude/agents/cc_translator.md" in text
+def test_generated_cc_skills_map_to_orchestrator():
+    orchestrate_skill = ROOT / ".claude" / "skills" / "cc-orchestrate-book" / "SKILL.md"
+    assert orchestrate_skill.is_file(), f"Missing {orchestrate_skill}"
+    text = orchestrate_skill.read_text(encoding="utf-8")
+    assert "orchestrate" in text
+    assert "--start-at" in text
+
+    translate_skill = ROOT / ".claude" / "skills" / "cc-translate-book" / "SKILL.md"
+    assert translate_skill.is_file(), f"Missing {translate_skill}"
+    text = translate_skill.read_text(encoding="utf-8")
+    assert "--start-at translate --stop-after translate" in text

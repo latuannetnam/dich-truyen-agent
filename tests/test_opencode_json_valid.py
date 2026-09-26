@@ -1,4 +1,5 @@
 """Verify opencode.json contains the external-LLM guardrail deny rules."""
+
 import json
 from pathlib import Path
 
@@ -129,20 +130,24 @@ def test_tool_level_permission(cfg, tool, expected):
 # Skills in .agent/, .agents/, .claude/, .codex/ are denied so only the
 # .opencode/skill/ (oc-*) variants remain active for OpenCode.
 DISABLED_FOLDER_SKILLS = [
+    "orchestrate-book",
     "crawl-book",
     "translate-book",
     "check-translation",
     "export-book",
     "brainstorming",
     "writing-plans",
+    "ag-orchestrate-book",
     "ag-crawl-book",
     "ag-translate-book",
     "ag-check-translation",
     "ag-export-book",
+    "cc-orchestrate-book",
     "cc-crawl-book",
     "cc-translate-book",
     "cc-check-translation",
     "cc-export-book",
+    "codex-orchestrate-book",
     "codex-crawl-book",
     "codex-translate-book",
     "codex-check-translation",
@@ -188,7 +193,13 @@ def test_oc_skills_not_denied(skill_rules):
     If a future edit broadens the deny list to a wildcard, this catches it
     before the oc- pipeline silently loses its skills.
     """
-    for name in ("oc-crawl-book", "oc-translate-book", "oc-check-translation", "oc-export-book"):
+    for name in (
+        "oc-orchestrate-book",
+        "oc-crawl-book",
+        "oc-translate-book",
+        "oc-check-translation",
+        "oc-export-book",
+    ):
         assert name not in skill_rules or skill_rules[name] != "deny", (
             f"OpenCode-native skill {name!r} must not be denied"
         )
