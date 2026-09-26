@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import argparse
 from pathlib import Path
+import sys
+from typing import Any
 
 from dich_truyen_agent.checkpoints import (
     approve_checkpoint,
@@ -31,7 +33,9 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Dich Truyen Agent deterministic helpers")
+    parser = argparse.ArgumentParser(
+        description="Dich Truyen Agent deterministic helpers"
+    )
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     def add_json_flag(command_parser: argparse.ArgumentParser) -> None:
@@ -51,13 +55,23 @@ def build_parser() -> argparse.ArgumentParser:
 
     approve = subparsers.add_parser("approve-checkpoint")
     approve.add_argument("--workspace", type=Path, required=True)
-    approve.add_argument("--type", dest="checkpoint_type", choices=[item.value for item in CheckpointType], required=True)
+    approve.add_argument(
+        "--type",
+        dest="checkpoint_type",
+        choices=[item.value for item in CheckpointType],
+        required=True,
+    )
     approve.add_argument("--report", required=True)
     approve.add_argument("--evidence", nargs="+", required=True)
 
     gate = subparsers.add_parser("check-gate")
     gate.add_argument("--workspace", type=Path, required=True)
-    gate.add_argument("--type", dest="checkpoint_type", choices=[item.value for item in CheckpointType], required=True)
+    gate.add_argument(
+        "--type",
+        dest="checkpoint_type",
+        choices=[item.value for item in CheckpointType],
+        required=True,
+    )
     add_json_flag(gate)
 
     validate = subparsers.add_parser("validate-style")
@@ -143,7 +157,11 @@ def build_parser() -> argparse.ArgumentParser:
 
     app_qa = subparsers.add_parser("approve-qa")
     app_qa.add_argument("--workspace", type=Path, required=True)
-    app_qa.add_argument("--allow-warnings", action="store_true", help="Allow QA approval with warnings (partial scope)")
+    app_qa.add_argument(
+        "--allow-warnings",
+        action="store_true",
+        help="Allow QA approval with warnings (partial scope)",
+    )
 
     # Phase 6 Export Commands
     export_cmd = subparsers.add_parser("export-book")
@@ -155,14 +173,47 @@ def build_parser() -> argparse.ArgumentParser:
     update_meta.add_argument("--translated-title", required=True)
     update_meta.add_argument("--translated-author")
 
+    # Orchestrator Command
+    orch = subparsers.add_parser("orchestrate")
+    orch.add_argument("--workspace", type=Path, required=True)
+    orch.add_argument(
+        "--start-at",
+        default="auto",
+        choices=["auto", "crawl", "translate", "qa", "export"],
+    )
+    orch.add_argument(
+        "--stop-after", default="export", choices=["crawl", "translate", "qa", "export"]
+    )
+    orch.add_argument("--resume", action="store_true")
+    orch.add_argument("--decision", choices=["approve", "reject"])
+    orch.add_argument("--batch-size", type=int, default=None)
+    orch.add_argument("--timeout", type=int, default=1800)
+    orch.add_argument("--chapter-timeout", type=int, default=1800)
+    orch.add_argument("--agent-timeout", type=int, default=1800)
+    orch.add_argument("--crawl-timeout", type=int, default=21600)
+    orch.add_argument("--qa-timeout", type=int, default=600)
+    orch.add_argument("--export-timeout", type=int, default=600)
+    orch.add_argument("--profile-repair-attempts", type=int, default=2)
+    orch.add_argument("--max-chapter-attempts", type=int, default=3)
+    orch.add_argument("--formats", default="epub,azw3")
+    orch.add_argument("--auto-approve", action="store_true")
+    orch.add_argument("--allow-warnings", action="store_true")
+    orch.add_argument("--allow-harness-permission-bypass", action="store_true")
+    orch.add_argument("--agy-model", type=str, default=None)
+    orch.add_argument("--agy-translation-model", type=str, default=None)
+    add_json_flag(orch)
+
     return parser
 
 
-
-def _persist_result(workspace_root: Path | None, command: str, result: OperationResult) -> None:
+def _persist_result(
+    workspace_root: Path | None, command: str, result: OperationResult
+) -> None:
     if workspace_root is None or not workspace_root.is_dir():
         return
-    atomic_write_yaml(workspace_root / "reports" / "results" / f"{command}.yaml", result)
+    atomic_write_yaml(
+        workspace_root / "reports" / "results" / f"{command}.yaml", result
+    )
 
 
 def run_command(args: argparse.Namespace) -> OperationResult:
@@ -206,7 +257,7 @@ def run_command(args: argparse.Namespace) -> OperationResult:
     elif args.command == "crawl-book":
         import asyncio
         from dich_truyen_agent.crawl_batch import crawl_book
-        
+
         result = asyncio.run(
             crawl_book(
                 books_root=args.books_root,
@@ -220,9 +271,13 @@ def run_command(args: argparse.Namespace) -> OperationResult:
         )
         workspace_root = workspace_paths(args.books_root, args.slug).root
     elif args.command == "validate-crawl-profile":
-        from dich_truyen_agent.crawl_profiles import load_crawl_profile, _source_host, _require_matching_domain
+        from dich_truyen_agent.crawl_profiles import (
+            load_crawl_profile,
+            _source_host,
+            _require_matching_domain,
+        )
         from dich_truyen_agent.storage import load_yaml_model
-        
+
         try:
             profile = load_crawl_profile(args.profile)
             paths = workspace_paths(args.workspace.parent, args.workspace.name)
@@ -241,6 +296,7 @@ def run_command(args: argparse.Namespace) -> OperationResult:
             )
     elif args.command == "promote-crawl-profile":
         from dich_truyen_agent.crawl_profiles import promote_local_crawl_profile
+
         try:
             shared_path = promote_local_crawl_profile(PROJECT_ROOT, args.workspace)
             result = OperationResult(
@@ -258,10 +314,10 @@ def run_command(args: argparse.Namespace) -> OperationResult:
     elif args.command == "generate-glossary":
         from dich_truyen_agent.glossary import initialize_glossary_file
         import yaml
-        
+
         try:
             workspace_root = workspace_paths(args.books_root, args.slug).root
-            
+
             # Load from input file if provided
             if args.terms_input:
                 if not args.terms_input.is_file():
@@ -284,7 +340,7 @@ def run_command(args: argparse.Namespace) -> OperationResult:
         from dich_truyen_agent.glossary import merge_glossary_proposals
         from dich_truyen_agent.storage import load_yaml_model
         import yaml
-        
+
         try:
             if not args.proposals.is_file():
                 result = OperationResult(
@@ -294,7 +350,7 @@ def run_command(args: argparse.Namespace) -> OperationResult:
             else:
                 with args.proposals.open(encoding="utf-8") as stream:
                     proposals_raw = yaml.safe_load(stream)
-                
+
                 proposals = {}
                 for term, data in proposals_raw.items():
                     proposals[term] = GlossaryTerm(
@@ -304,7 +360,9 @@ def run_command(args: argparse.Namespace) -> OperationResult:
                         is_canonical=False,
                         note=data.get("note"),
                     )
-                result = merge_glossary_proposals(args.workspace, args.chapter_id, proposals)
+                result = merge_glossary_proposals(
+                    args.workspace, args.chapter_id, proposals
+                )
         except Exception as e:
             result = OperationResult(
                 status=OperationStatus.ERROR,
@@ -312,7 +370,7 @@ def run_command(args: argparse.Namespace) -> OperationResult:
             )
     elif args.command == "lock-term":
         from dich_truyen_agent.glossary import lock_glossary_term
-        
+
         try:
             result = lock_glossary_term(args.workspace, args.term)
         except Exception as e:
@@ -322,7 +380,7 @@ def run_command(args: argparse.Namespace) -> OperationResult:
             )
     elif args.command == "prepare-translation-context":
         from dich_truyen_agent.workspace import prepare_translation_context
-        
+
         try:
             result = prepare_translation_context(args.workspace, args.chapter_id)
         except Exception as e:
@@ -332,7 +390,7 @@ def run_command(args: argparse.Namespace) -> OperationResult:
             )
     elif args.command == "promote-chapter":
         from dich_truyen_agent.workspace import promote_chapter_translation
-        
+
         try:
             result = promote_chapter_translation(
                 args.workspace,
@@ -349,7 +407,7 @@ def run_command(args: argparse.Namespace) -> OperationResult:
             )
     elif args.command == "show-translation-progress":
         from dich_truyen_agent.workspace import get_next_pending_translation
-        
+
         try:
             result = get_next_pending_translation(args.workspace)
         except Exception as e:
@@ -403,21 +461,23 @@ def run_command(args: argparse.Namespace) -> OperationResult:
             )
     elif args.command == "check-translation":
         from dich_truyen_agent.qa import run_qa_check
-        
+
         try:
             # 1. Run check
             report = run_qa_check(args.workspace)
-            
+
             # 2. Persist report.yaml atomically
             paths = workspace_paths(args.workspace.parent, args.workspace.name)
             qa_report_path = paths.reports / "qa-report.yaml"
             atomic_write_yaml(qa_report_path, report)
-            
+
             # 3. Print beautiful Markdown table to console stdout
             print("\n### Translation QA Findings Summary")
             print(f"**Passed Checks:** {report.summary['passed']}")
-            print(f"**Total Findings:** {report.summary['findings_count']} (Errors: {report.summary['error_count']}, Warnings: {report.summary['warning_count']})\n")
-            
+            print(
+                f"**Total Findings:** {report.summary['findings_count']} (Errors: {report.summary['error_count']}, Warnings: {report.summary['warning_count']})\n"
+            )
+
             if report.findings:
                 print("| Chapter | Type | Severity | Finding Details |")
                 print("| :--- | :--- | :--- | :--- |")
@@ -425,15 +485,25 @@ def run_command(args: argparse.Namespace) -> OperationResult:
                     msg = f.message
                     if f.details and "snippet" in f.details:
                         msg += f" Context: `{f.details['snippet']}`"
-                    print(f"| {f.chapter_id} | {f.finding_type.value} | {f.severity} | {msg} |")
+                    print(
+                        f"| {f.chapter_id} | {f.finding_type.value} | {f.severity} | {msg} |"
+                    )
                 print()
             else:
                 print("✨ No issues found! Workspace is ready for approval.\n")
-                
+
             result = OperationResult(
-                status=OperationStatus.OK if report.summary['passed'] else OperationStatus.BLOCKED,
+                status=OperationStatus.OK
+                if report.summary["passed"]
+                else OperationStatus.BLOCKED,
                 reason=f"QA check completed with {report.summary['findings_count']} findings",
-                report_paths=[str(qa_report_path.resolve().relative_to(args.workspace.resolve()).as_posix())],
+                report_paths=[
+                    str(
+                        qa_report_path.resolve()
+                        .relative_to(args.workspace.resolve())
+                        .as_posix()
+                    )
+                ],
             )
         except Exception as e:
             result = OperationResult(
@@ -445,7 +515,7 @@ def run_command(args: argparse.Namespace) -> OperationResult:
         result = approve_current_qa(args.workspace, allow_warnings=allow_warnings)
     elif args.command == "export-book":
         from dich_truyen_agent.export import export_book
-        
+
         try:
             formats_list = [f.strip() for f in args.formats.split(",") if f.strip()]
             result = export_book(args.workspace, formats_list)
@@ -456,7 +526,7 @@ def run_command(args: argparse.Namespace) -> OperationResult:
             )
     elif args.command == "update-book-metadata":
         from dich_truyen_agent.workspace import update_book_metadata
-        
+
         try:
             result = update_book_metadata(
                 args.workspace,
@@ -490,8 +560,125 @@ def _print_json_result(result: OperationResult) -> None:
     print(result.model_dump_json(indent=2))
 
 
+def _print_orchestrate_outcome(outcome: Any) -> None:
+    print(f"status: {outcome.status}")
+    print(f"run_id: {outcome.run_id}")
+    print(f"span: {outcome.selected_span[0]} -> {outcome.selected_span[1]}")
+    print(f"current_phase: {outcome.current_phase}")
+    if outcome.pending_approval:
+        print(f"pending_approval: {outcome.pending_approval}")
+    if outcome.approval_report_path:
+        print(f"report: {outcome.approval_report_path}")
+    if outcome.error_code:
+        print(f"error_code: {outcome.error_code}")
+    if outcome.error_message:
+        print(f"error_message: {outcome.error_message}")
+    if outcome.next_command:
+        print(f"next_command: {outcome.next_command}")
+
+
+def run_orchestrate(args: argparse.Namespace) -> Any:
+    from dich_truyen_agent.orchestrator.models import OrchestratorConfig, RunOutcome
+    from dich_truyen_agent.orchestrator.orchestrator import BookOrchestrator
+
+    workspace_root = args.workspace.resolve()
+    orchestrator = BookOrchestrator()
+
+    if args.decision and not args.resume:
+        return RunOutcome(
+            status="blocked",
+            run_id="none",
+            selected_span=(args.start_at, args.stop_after),
+            current_phase="cli_validation",
+            error_code="invalid_arguments",
+            error_message="--decision requires --resume",
+            exit_code=3,
+        )
+
+    if args.resume:
+        if (
+            args.start_at != "auto"
+            or args.stop_after != "export"
+            or args.agy_model is not None
+            or args.agy_translation_model is not None
+        ):
+            return RunOutcome(
+                status="blocked",
+                run_id="none",
+                selected_span=(args.start_at, args.stop_after),
+                current_phase="cli_validation",
+                error_code="invalid_arguments",
+                error_message="--resume cannot be combined with phase selectors or model options",
+                exit_code=3,
+            )
+        return orchestrator.resume(workspace_root, decision=args.decision)
+
+    # Validating phase span
+    phases = ("crawl", "translate", "qa", "export")
+    if args.start_at != "auto":
+        start_idx = phases.index(args.start_at)
+        stop_idx = phases.index(args.stop_after)
+        if start_idx > stop_idx:
+            return RunOutcome(
+                status="blocked",
+                run_id="none",
+                selected_span=(args.start_at, args.stop_after),
+                current_phase="cli_validation",
+                error_code="invalid_phase_span",
+                error_message=f"stop_after ({args.stop_after!r}) cannot precede start_at ({args.start_at!r})",
+                exit_code=3,
+            )
+
+    effective_batch_size = OrchestratorConfig.resolve_batch_size(
+        explicit_batch_size=args.batch_size,
+        env_file=PROJECT_ROOT / ".env",
+    )
+    formats_list = [f.strip() for f in args.formats.split(",") if f.strip()]
+
+    try:
+        config = OrchestratorConfig(
+            workspace_root=workspace_root,
+            start_at=args.start_at,
+            stop_after=args.stop_after,
+            formats=formats_list,
+            batch_size=effective_batch_size,
+            timeout_seconds=args.chapter_timeout,
+            crawl_timeout_seconds=args.crawl_timeout,
+            translation_timeout_seconds=args.chapter_timeout,
+            qa_timeout_seconds=args.qa_timeout,
+            export_timeout_seconds=args.export_timeout,
+            max_repair_attempts=args.profile_repair_attempts,
+            max_chapter_attempts=args.max_chapter_attempts,
+            auto_approve=args.auto_approve,
+            allow_warnings=args.allow_warnings,
+            allow_harness_permission_bypass=args.allow_harness_permission_bypass,
+            global_model=args.agy_model,
+            translation_model=args.agy_translation_model,
+        )
+    except Exception as e:
+        return RunOutcome(
+            status="blocked",
+            run_id="none",
+            selected_span=(args.start_at, args.stop_after),
+            current_phase="cli_validation",
+            error_code="config_validation_error",
+            error_message=str(e),
+            exit_code=3,
+        )
+
+    return orchestrator.start(config)
+
+
 def main() -> None:
     args = build_parser().parse_args()
+    if args.command == "orchestrate":
+        outcome = run_orchestrate(args)
+        if getattr(args, "json", False):
+            print(outcome.model_dump_json(indent=2))
+        else:
+            _print_orchestrate_outcome(outcome)
+        sys.exit(outcome.exit_code)
+
     result = run_command(args)
     if getattr(args, "json", False):
         _print_json_result(result)

@@ -30,7 +30,11 @@ from dich_truyen_agent.models import (
 )
 from dich_truyen_agent.qa import run_qa_check
 from dich_truyen_agent.orchestrator.attempts import AttemptJournal
-from dich_truyen_agent.orchestrator.models import OrchestratorConfig, RunOutcome, RunSummary
+from dich_truyen_agent.orchestrator.models import (
+    OrchestratorConfig,
+    RunOutcome,
+    RunSummary,
+)
 from dich_truyen_agent.orchestrator.runners import resolve_model_for_phase
 from dich_truyen_agent.orchestrator.runners.base import HarnessRunner
 from dich_truyen_agent.orchestrator.state import BookOrchestratorState
@@ -72,7 +76,9 @@ def _compute_qa_evidence_hashes(workspace_root: Path) -> dict[str, str]:
         for ch in catalog.chapters:
             trans_file = paths.translations / ch.translation_filename
             if trans_file.is_file():
-                hashes[f"translations/{ch.translation_filename}"] = sha256_file(trans_file)
+                hashes[f"translations/{ch.translation_filename}"] = sha256_file(
+                    trans_file
+                )
     if paths.state.is_file():
         hashes["state.yaml"] = sha256_file(paths.state)
     qa_rep = paths.reports / "qa-report.yaml"
@@ -102,7 +108,10 @@ def build_orchestrator_graph(
         )
 
         if decision.status == "completed":
-            return {"status": "completed", "phase": decision.phase or state["stop_after"]}
+            return {
+                "status": "completed",
+                "phase": decision.phase or state["stop_after"],
+            }
         if decision.status == "blocked":
             return {
                 "status": "blocked",
@@ -129,7 +138,9 @@ def build_orchestrator_graph(
                         1
                         for ch in bstate.chapters
                         if ch.raw.status is StageStatus.COMPLETED
-                        and (paths.raw / catalog.chapters[ch.chapter_id - 1].raw_filename).is_file()
+                        and (
+                            paths.raw / catalog.chapters[ch.chapter_id - 1].raw_filename
+                        ).is_file()
                     )
                     if completed_raw == len(catalog.chapters):
                         # All raw files are ready; skip downloading and go straight to report
@@ -177,7 +188,10 @@ def build_orchestrator_graph(
         try:
             attempt = active_journal.reserve(run_id, "profile_repair", limit=2)
         except RuntimeError as err:
-            return {"status": "blocked", "error_message": f"profile repair budget exhausted: {err}"}
+            return {
+                "status": "blocked",
+                "error_message": f"profile repair budget exhausted: {err}",
+            }
 
         # Snapshot protected workspace file hashes
         protected_hashes = _compute_crawl_evidence_hashes(workspace_root)
@@ -191,7 +205,9 @@ def build_orchestrator_graph(
         if paths.chapters.is_file():
             protected_hashes["chapters.yaml"] = sha256_file(paths.chapters)
         if (paths.root / "crawl-profile.yaml").is_file():
-            protected_hashes["crawl-profile.yaml"] = sha256_file(paths.root / "crawl-profile.yaml")
+            protected_hashes["crawl-profile.yaml"] = sha256_file(
+                paths.root / "crawl-profile.yaml"
+            )
 
         candidate_path = run_dir / f"profile_candidate_{attempt}.yaml"
         metadata = load_yaml_model(paths.book, BookMetadata)
@@ -260,11 +276,17 @@ def build_orchestrator_graph(
         paths = workspace_paths(workspace_root.parent, workspace_root.name)
 
         if not paths.chapters.is_file() or not paths.state.is_file():
-            return {"status": "blocked", "error_message": "chapters.yaml or state.yaml missing after crawl"}
+            return {
+                "status": "blocked",
+                "error_message": "chapters.yaml or state.yaml missing after crawl",
+            }
 
         catalog = load_yaml_model(paths.chapters, ChapterCatalog)
         if len(catalog.chapters) == 0:
-            return {"status": "blocked", "error_message": "discovered catalog contains zero chapters"}
+            return {
+                "status": "blocked",
+                "error_message": "discovered catalog contains zero chapters",
+            }
 
         crawl_rep_path = paths.reports / "crawl.yaml"
         if crawl_rep_path.is_file():
@@ -278,22 +300,42 @@ def build_orchestrator_graph(
         if report is None:
             from dich_truyen_agent.crawl_profiles import load_active_crawl_profile
             from dich_truyen_agent.paths import find_project_root
+
             metadata = load_yaml_model(paths.book, BookMetadata)
             project_root = find_project_root(workspace_root)
             try:
-                profile_source = load_active_crawl_profile(project_root, workspace_root, metadata.source_url)
-                report = build_crawl_report(workspace_root, profile_source.profile, CrawlSettings())
+                profile_source = load_active_crawl_profile(
+                    project_root, workspace_root, metadata.source_url
+                )
+                report = build_crawl_report(
+                    workspace_root, profile_source.profile, CrawlSettings()
+                )
                 atomic_write_yaml(crawl_rep_path, report)
             except Exception as e:
-                return {"phase": "profile_repair", "error_message": f"failed to load crawl profile for report: {e}"}
+                return {
+                    "phase": "profile_repair",
+                    "error_message": f"failed to load crawl profile for report: {e}",
+                }
 
         # Check for blockers
         if report.blockers:
-            if any("selector" in b.lower() or "ordinal" in b.lower() for b in report.blockers):
-                return {"phase": "profile_repair", "error_message": f"crawl blockers: {report.blockers}"}
-            return {"status": "blocked", "error_message": f"crawl blockers: {report.blockers}"}
+            if any(
+                "selector" in b.lower() or "ordinal" in b.lower()
+                for b in report.blockers
+            ):
+                return {
+                    "phase": "profile_repair",
+                    "error_message": f"crawl blockers: {report.blockers}",
+                }
+            return {
+                "status": "blocked",
+                "error_message": f"crawl blockers: {report.blockers}",
+            }
 
-        if report.scope != ApprovalScope.FULL or report.completed_count < report.selected_count:
+        if (
+            report.scope != ApprovalScope.FULL
+            or report.completed_count < report.selected_count
+        ):
             return {
                 "status": "blocked",
                 "error_message": f"incomplete crawl: {report.completed_count}/{report.selected_count} chapters completed",
@@ -315,7 +357,9 @@ def build_orchestrator_graph(
         report = load_yaml_model(crawl_rep_path, CrawlReport)
 
         report_hash = state.get("approval_report_hash") or sha256_file(crawl_rep_path)
-        evidence_hashes = state.get("approval_evidence_hashes") or _compute_crawl_evidence_hashes(workspace_root)
+        evidence_hashes = state.get(
+            "approval_evidence_hashes"
+        ) or _compute_crawl_evidence_hashes(workspace_root)
 
         auto_approve = config.auto_approve if config else False
 
@@ -343,18 +387,29 @@ def build_orchestrator_graph(
 
         # On resume: verify decision
         approved = False
-        if isinstance(decision, dict):
+        if isinstance(decision, bool):
+            approved = decision
+        elif isinstance(decision, dict):
             approved = bool(decision.get("approved"))
-        elif isinstance(decision, str) and decision.lower() in {"approve", "approved", "yes"}:
+        elif isinstance(decision, str) and decision.lower() in {
+            "approve",
+            "approved",
+            "yes",
+        }:
             approved = True
 
         if not approved:
             return {"status": "blocked", "error_message": "crawl approval rejected"}
 
         # Verify evidence has not changed while waiting for decision
-        current_report_hash = sha256_file(crawl_rep_path) if crawl_rep_path.is_file() else None
+        current_report_hash = (
+            sha256_file(crawl_rep_path) if crawl_rep_path.is_file() else None
+        )
         current_evidence_hashes = _compute_crawl_evidence_hashes(workspace_root)
-        if current_report_hash != report_hash or current_evidence_hashes != evidence_hashes:
+        if (
+            current_report_hash != report_hash
+            or current_evidence_hashes != evidence_hashes
+        ):
             return {
                 "status": "blocked",
                 "pending_approval": None,
@@ -373,16 +428,29 @@ def build_orchestrator_graph(
         paths = workspace_paths(workspace_root.parent, workspace_root.name)
 
         # Check if already approved (skip duplicate write)
-        if check_orchestrator_gate(workspace_root, CheckpointType.CRAWL_APPROVED).status is not OperationStatus.OK:
+        if (
+            check_orchestrator_gate(
+                workspace_root, CheckpointType.CRAWL_APPROVED
+            ).status
+            is not OperationStatus.OK
+        ):
             report = load_yaml_model(paths.reports / "crawl.yaml", CrawlReport)
             app_res = approve_full_crawl(workspace_root, report)
             if app_res.status is not OperationStatus.OK:
-                return {"status": "blocked", "error_message": f"approve_full_crawl failed: {app_res.reason}"}
+                return {
+                    "status": "blocked",
+                    "error_message": f"approve_full_crawl failed: {app_res.reason}",
+                }
 
         # Verify gate
-        gate_res = check_orchestrator_gate(workspace_root, CheckpointType.CRAWL_APPROVED)
+        gate_res = check_orchestrator_gate(
+            workspace_root, CheckpointType.CRAWL_APPROVED
+        )
         if gate_res.status is not OperationStatus.OK:
-            return {"status": "blocked", "error_message": f"crawl gate check failed: {gate_res.reason}"}
+            return {
+                "status": "blocked",
+                "error_message": f"crawl gate check failed: {gate_res.reason}",
+            }
 
         if state["stop_after"] == "crawl":
             return {"status": "completed", "phase": "crawl"}
@@ -397,7 +465,9 @@ def build_orchestrator_graph(
             return {"status": "blocked", "error_message": "book.yaml missing"}
         metadata = load_yaml_model(paths.book, BookMetadata)
 
-        needs_translation = not metadata.translated_title or (metadata.author and not metadata.translated_author)
+        needs_translation = not metadata.translated_title or (
+            metadata.author and not metadata.translated_author
+        )
         if needs_translation:
             model = (
                 resolve_model_for_phase(
@@ -427,9 +497,15 @@ def build_orchestrator_graph(
             try:
                 metadata = load_yaml_model(paths.book, BookMetadata)
             except Exception as e:
-                return {"status": "blocked", "error_message": f"failed to reload book.yaml after metadata translation: {e}"}
+                return {
+                    "status": "blocked",
+                    "error_message": f"failed to reload book.yaml after metadata translation: {e}",
+                }
             if not metadata.translated_title:
-                return {"status": "blocked", "error_message": "metadata translation failed: translated_title is empty"}
+                return {
+                    "status": "blocked",
+                    "error_message": "metadata translation failed: translated_title is empty",
+                }
 
         if state["stop_after"] == "metadata":
             return {"status": "completed", "phase": "metadata"}
@@ -458,10 +534,15 @@ def build_orchestrator_graph(
                 if j_file.is_file():
                     rec_res = recover_chapter_promotion(workspace_root, ch.chapter_id)
                     if rec_res.status is not OperationStatus.OK:
-                        return {"status": "blocked", "error_message": f"promotion recovery failed for chapter {ch.chapter_id}: {rec_res.reason}"}
+                        return {
+                            "status": "blocked",
+                            "error_message": f"promotion recovery failed for chapter {ch.chapter_id}: {rec_res.reason}",
+                        }
 
             # 2. Get next translation work item
-            work_res = next_translation_work_item(workspace_root, run_id=run_id, attempt=1)
+            work_res = next_translation_work_item(
+                workspace_root, run_id=run_id, attempt=1
+            )
             if work_res.status is not OperationStatus.OK:
                 return {"status": "blocked", "error_message": work_res.reason}
 
@@ -474,7 +555,10 @@ def build_orchestrator_graph(
 
             chapter_id = work_data.get("chapter_id")
             if chapter_id is None:
-                return {"status": "blocked", "error_message": "no chapter_id in next translation work item"}
+                return {
+                    "status": "blocked",
+                    "error_message": "no chapter_id in next translation work item",
+                }
 
             # Predecessor check: strictly enforce valid completed predecessor for chapter > 1
             if chapter_id > 1:
@@ -491,8 +575,13 @@ def build_orchestrator_graph(
                     }
                 # Check predecessor hash against state.yaml
                 bstate = load_yaml_model(paths.state, BookState)
-                prev_ch = next((c for c in bstate.chapters if c.chapter_id == chapter_id - 1), None)
-                if not prev_ch or prev_ch.translation.status is not StageStatus.COMPLETED:
+                prev_ch = next(
+                    (c for c in bstate.chapters if c.chapter_id == chapter_id - 1), None
+                )
+                if (
+                    not prev_ch
+                    or prev_ch.translation.status is not StageStatus.COMPLETED
+                ):
                     return {
                         "status": "blocked",
                         "error_message": f"preceding chapter {chapter_id - 1} translation status is not COMPLETED in state.yaml",
@@ -509,7 +598,9 @@ def build_orchestrator_graph(
 
             while not chapter_promoted:
                 try:
-                    attempt = active_journal.reserve(run_id, f"chapter_{chapter_id}", limit=3)
+                    attempt = active_journal.reserve(
+                        run_id, f"chapter_{chapter_id}", limit=3
+                    )
                 except RuntimeError as err:
                     return {
                         "status": "blocked",
@@ -523,10 +614,18 @@ def build_orchestrator_graph(
 
                 # Snapshot protected hashes
                 protected_hashes = {
-                    "book.yaml": sha256_file(paths.book) if paths.book.is_file() else None,
-                    "chapters.yaml": sha256_file(paths.chapters) if paths.chapters.is_file() else None,
-                    "state.yaml": sha256_file(paths.state) if paths.state.is_file() else None,
-                    "style.yaml": sha256_file(paths.style) if paths.style.is_file() else None,
+                    "book.yaml": sha256_file(paths.book)
+                    if paths.book.is_file()
+                    else None,
+                    "chapters.yaml": sha256_file(paths.chapters)
+                    if paths.chapters.is_file()
+                    else None,
+                    "state.yaml": sha256_file(paths.state)
+                    if paths.state.is_file()
+                    else None,
+                    "style.yaml": sha256_file(paths.style)
+                    if paths.style.is_file()
+                    else None,
                 }
                 # Also snapshot any existing translated files in translations/
                 if paths.translations.is_dir():
@@ -587,7 +686,10 @@ def build_orchestrator_graph(
                 )
                 if verify_res.status is not OperationStatus.OK:
                     last_err = verify_res.reason
-                    if active_journal.get_attempts(run_id, f"chapter_{chapter_id}") >= 3:
+                    if (
+                        active_journal.get_attempts(run_id, f"chapter_{chapter_id}")
+                        >= 3
+                    ):
                         return {
                             "status": "blocked",
                             "error_message": f"chapter {chapter_id} staging verification failed: {last_err}",
@@ -625,7 +727,10 @@ def build_orchestrator_graph(
 
         # Batch completed: check if more chapters remain
         work_res = next_translation_work_item(workspace_root, run_id=run_id, attempt=1)
-        if work_res.status is OperationStatus.OK and work_res.data.get("state") == "completed":
+        if (
+            work_res.status is OperationStatus.OK
+            and work_res.data.get("state") == "completed"
+        ):
             if state["stop_after"] == "translate":
                 return {"status": "completed", "phase": "translate"}
             return {"phase": "qa"}
@@ -686,7 +791,9 @@ def build_orchestrator_graph(
         report = load_yaml_model(qa_rep_path, QAReport)
 
         report_hash = state.get("approval_report_hash") or sha256_file(qa_rep_path)
-        evidence_hashes = state.get("approval_evidence_hashes") or _compute_qa_evidence_hashes(workspace_root)
+        evidence_hashes = state.get(
+            "approval_evidence_hashes"
+        ) or _compute_qa_evidence_hashes(workspace_root)
 
         auto_approve = config.auto_approve if config else False
         findings_count = report.summary.get("findings_count", len(report.findings))
@@ -715,18 +822,29 @@ def build_orchestrator_graph(
 
         # On resume: verify decision
         approved = False
-        if isinstance(decision, dict):
+        if isinstance(decision, bool):
+            approved = decision
+        elif isinstance(decision, dict):
             approved = bool(decision.get("approved"))
-        elif isinstance(decision, str) and decision.lower() in {"approve", "approved", "yes"}:
+        elif isinstance(decision, str) and decision.lower() in {
+            "approve",
+            "approved",
+            "yes",
+        }:
             approved = True
 
         if not approved:
             return {"status": "blocked", "error_message": "QA approval rejected"}
 
         # Verify evidence has not changed while waiting for decision
-        current_report_hash = sha256_file(qa_rep_path) if qa_rep_path.is_file() else None
+        current_report_hash = (
+            sha256_file(qa_rep_path) if qa_rep_path.is_file() else None
+        )
         current_evidence_hashes = _compute_qa_evidence_hashes(workspace_root)
-        if current_report_hash != report_hash or current_evidence_hashes != evidence_hashes:
+        if (
+            current_report_hash != report_hash
+            or current_evidence_hashes != evidence_hashes
+        ):
             return {
                 "status": "blocked",
                 "pending_approval": None,
@@ -745,7 +863,9 @@ def build_orchestrator_graph(
         workspace_root = Path(state["workspace_root"])
         paths = workspace_paths(workspace_root.parent, workspace_root.name)
         qa_rep_path = paths.reports / "qa-report.yaml"
-        report = load_yaml_model(qa_rep_path, QAReport) if qa_rep_path.is_file() else None
+        report = (
+            load_yaml_model(qa_rep_path, QAReport) if qa_rep_path.is_file() else None
+        )
 
         app_res = approve_current_qa(workspace_root, report=report, allow_warnings=True)
         if app_res.status is not OperationStatus.OK:
@@ -991,7 +1111,9 @@ class GraphRunner:
         self.runner = runner
         self.config = config
         self.checkpointer = checkpointer or MemorySaver()
-        self.journal = journal or AttemptJournal(config.workspace_root / "reports" / "runs" / config.run_id / "attempts.json")
+        self.journal = journal or AttemptJournal(
+            config.workspace_root / "reports" / "runs" / config.run_id / "attempts.json"
+        )
         self.tracer = tracer or ActivityTracer(
             config.workspace_root / "reports" / "runs" / config.run_id,
             RunSummary(
@@ -1020,23 +1142,28 @@ class GraphRunner:
         thread_config = {"configurable": {"thread_id": self.config.run_id}}
         run_dir = self.config.workspace_root / "reports" / "runs" / self.config.run_id
 
-        if resume_decision is not None:
-            from langgraph.types import Command
-            raw_output = self.graph.invoke(Command(resume=resume_decision), config=thread_config)
-        else:
-            from dich_truyen_agent.orchestrator.state import create_initial_state
-            initial_state = create_initial_state(self.config, run_dir)
-            raw_output = self.graph.invoke(initial_state, config=thread_config)
-
-        # Check if graph paused on interrupt
         state_snapshot = self.graph.get_state(thread_config)
-        is_paused = bool(state_snapshot.tasks and any(t.interrupts for t in state_snapshot.tasks))
+        is_paused = bool(
+            state_snapshot.tasks and any(t.interrupts for t in state_snapshot.tasks)
+        )
 
-        if is_paused:
+        if is_paused and resume_decision is None:
             interrupt_val = state_snapshot.tasks[0].interrupts[0].value
-            pending_app = interrupt_val.get("type") if isinstance(interrupt_val, dict) else "approval"
-            rep_path = interrupt_val.get("report_path") if isinstance(interrupt_val, dict) else None
-            rep_hash = interrupt_val.get("report_hash") if isinstance(interrupt_val, dict) else None
+            pending_app = (
+                interrupt_val.get("type")
+                if isinstance(interrupt_val, dict)
+                else "approval"
+            )
+            rep_path = (
+                interrupt_val.get("report_path")
+                if isinstance(interrupt_val, dict)
+                else None
+            )
+            rep_hash = (
+                interrupt_val.get("report_hash")
+                if isinstance(interrupt_val, dict)
+                else None
+            )
             self.tracer.update_status(
                 "paused",
                 pending_approval=pending_app,
@@ -1046,7 +1173,68 @@ class GraphRunner:
                 status="paused",
                 run_id=self.config.run_id,
                 selected_span=(self.config.start_at, self.config.stop_after),
-                current_phase=raw_output.get("phase", "qa_decision" if pending_app == "qa_approval" else "crawl_decision"),
+                current_phase=state_snapshot.values.get(
+                    "phase",
+                    "qa_decision" if pending_app == "qa_approval" else "crawl_decision",
+                ),
+                pending_approval=pending_app,
+                approval_report_path=rep_path,
+                approval_report_hash=rep_hash,
+                exit_code=2,
+                next_command=f"orchestrate --workspace {self.config.workspace_root} --resume --decision approve",
+                data={"interrupt": interrupt_val},
+            )
+
+        if resume_decision is not None:
+            from langgraph.types import Command
+
+            raw_output = self.graph.invoke(
+                Command(resume=resume_decision), config=thread_config
+            )
+        elif state_snapshot.values:
+            raw_output = self.graph.invoke(None, config=thread_config)
+        else:
+            from dich_truyen_agent.orchestrator.state import create_initial_state
+
+            initial_state = create_initial_state(self.config, run_dir)
+            raw_output = self.graph.invoke(initial_state, config=thread_config)
+
+        # Check if graph paused on interrupt
+        state_snapshot = self.graph.get_state(thread_config)
+        is_paused = bool(
+            state_snapshot.tasks and any(t.interrupts for t in state_snapshot.tasks)
+        )
+
+        if is_paused:
+            interrupt_val = state_snapshot.tasks[0].interrupts[0].value
+            pending_app = (
+                interrupt_val.get("type")
+                if isinstance(interrupt_val, dict)
+                else "approval"
+            )
+            rep_path = (
+                interrupt_val.get("report_path")
+                if isinstance(interrupt_val, dict)
+                else None
+            )
+            rep_hash = (
+                interrupt_val.get("report_hash")
+                if isinstance(interrupt_val, dict)
+                else None
+            )
+            self.tracer.update_status(
+                "paused",
+                pending_approval=pending_app,
+                approval_report_path=rep_path,
+            )
+            return RunOutcome(
+                status="paused",
+                run_id=self.config.run_id,
+                selected_span=(self.config.start_at, self.config.stop_after),
+                current_phase=raw_output.get(
+                    "phase",
+                    "qa_decision" if pending_app == "qa_approval" else "crawl_decision",
+                ),
                 pending_approval=pending_app,
                 approval_report_path=rep_path,
                 approval_report_hash=rep_hash,
@@ -1056,7 +1244,11 @@ class GraphRunner:
             )
 
         final_status = raw_output.get("status", "completed")
-        exit_code = 0 if final_status == "completed" else (3 if final_status == "blocked" else 1)
+        exit_code = (
+            0
+            if final_status == "completed"
+            else (3 if final_status == "blocked" else 1)
+        )
         err_msg = raw_output.get("error_message")
         self.tracer.update_status(final_status, error_message=err_msg)
 
