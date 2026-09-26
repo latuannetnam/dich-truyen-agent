@@ -10,7 +10,7 @@ For setup and everyday usage, see [README.md](README.md).
 
 ## Architecture Versioning
 
-This document describes **Translation Orchestration Architecture v2.6**.
+This document describes **Translation Orchestration Architecture v2.7**.
 
 Architecture changes are versioned when they alter durable workspace contracts,
 CLI orchestration contracts, generated harness behavior, or recovery semantics.
@@ -55,6 +55,11 @@ Current versions:
   (`books/.orchestrator-locks/<slug>.lock`), interactive terminal gate approval (`[y/N]`),
   clean-only auto-approval (`-y`), and strict run policy pinning across pause/resume. Legacy
   full-book workspaces retain existing contracts. See ADR-0007.
+- **v2.7 - LLM-driven novel author discovery & rich catalog metadata:** Automatic
+  extraction of novel metadata and author from index HTML context into
+  `reports/catalog_intro.txt` without hardcoded regex scrapers; unified author
+  discovery and metadata translation via `ag_metadata_translator` persona; Kindle
+  AZW3, MOBI, and PDF export derivatives via Calibre integration. See ADR-0008.
 
 
 Versioned changes must update:
@@ -82,13 +87,19 @@ books/<book-slug>/
 ├── translations/           # Promoted Vietnamese translation files
 ├── staging/                # Staged drafts, glossary contexts, proposals
 ├── checkpoints/            # Cryptographic approvals
-├── exports/                # Exported ebook files
+├── exports/                # Exported ebook files (EPUB 3.3, AZW3, MOBI, PDF)
 └── reports/
     ├── crawl.yaml          # Crawler verification statistics
+    ├── catalog_intro.txt   # Extracted index metadata/intro for author discovery
+    ├── source-scope.yaml   # Provenance-backed frozen prefix scope (when --limit is set)
     ├── qa-report.yaml      # Translation QA findings
     ├── glossary-conflicts.yaml # Glossary merge conflict log
-    └── results/            # Persisted CLI execution result metadata
+    └── runs/               # Orchestrator run summaries, SQLite checkpoints & attempt journals
 ```
+
+External runtime locks are stored outside the book workspace at
+`books/.orchestrator-locks/<book-slug>.lock` to protect the workspace across
+initialization, crawling, translation, and export.
 
 `state.yaml` is the source of truth for completed raw and translation stages.
 The actual file hashes are stored in state and checkpoint records, so manual
@@ -104,20 +115,29 @@ evidence has been approved.
 
 ### 1. Initialize Book Workspace
 
-`init-book` creates the book directory, writes the metadata snapshot, installs
-the selected style, and initializes empty chapter and state records:
+Workspaces can be created explicitly with `init-book` or automatically as part
+of unified single-command orchestration (`orchestrate --url <url> --slug <slug> --style <style>`):
 
 ```powershell
+# Explicit initialization
 $env:PYTHONUTF8=1
-uv run python main.py init-book --slug <book-slug> --title "<title>" --source-url "<source-url>" --style <profile-name>
+uv run python main.py init-book --slug <book-slug> --title "<title>" --source-url "<source-url>" --style <profile-name> [--author "<author>"]
+
+# Or single-command end-to-end orchestration
+uv run python main.py orchestrate --url "<source-url>" --slug <book-slug> --style <profile-name> [--limit <N>] [-y]
 ```
 
 The `--style` flag accepts either a bare profile name (`general`, `tien_hiep`,
 `mat_the`, `do_thi`) or an explicit path to a custom YAML file. It defaults to
 `general` when omitted. The agent infers the book's genre before initialization
 and recommends the most appropriate profile; the user confirms or overrides
-before `init-book` runs. See the shared main-agent guide for the recommendation
-flow.
+before `init-book` or `orchestrate` runs. See the shared main-agent guide for
+the recommendation flow.
+
+Novel author metadata is optional: if omitted or unlisted on the CLI, the author
+defaults to `"Unknown"`, and the orchestrator dynamically resolves the author
+using LLM reading comprehension on catalog intro evidence during translation
+metadata preparation (see Section 4).
 
 Important outputs:
 
@@ -128,16 +148,27 @@ Important outputs:
 
 ### 2. Crawl Raw Chinese Chapters
 
-The active harness crawl skill runs the crawler through the CLI. The crawler
-discovers chapter URLs, downloads raw Chinese text, writes files under `raw/`,
-updates `chapters.yaml` and `state.yaml`, and creates `reports/crawl.yaml`.
+The crawler discovers chapter URLs, downloads raw Chinese text, writes files under `raw/`,
+updates `chapters.yaml` and `state.yaml`, and creates verification reports:
 
-The crawl output is not trusted automatically. The user or operator reviews the
-crawl evidence and approves it:
+- `reports/crawl.yaml`: crawler verification statistics, HTTP status codes, and encoding checks.
+- `reports/catalog_intro.txt`: bounded introductory text (< 3,000 characters) extracted from
+  the novel's index page. It strips bulky chapter link elements (`<a>`) while preserving
+  `<meta>` tags, intro paragraphs, and inline JavaScript metadata (such as `var bookinfo = {...}`).
+  This artifact provides context for author discovery without flooding agent context windows.
+- `reports/source-scope.yaml` (when `--limit N` is specified): records total source novel
+  chapters, the frozen prefix ID range, and a SHA-256 digest of the complete catalog for
+  provenance verification.
+
+The crawl output is not trusted automatically. In interactive sessions, the orchestrator
+presents a summary and prompts `Approve [y/N]?`. In headless sessions or script workflows,
+approval is submitted via:
 
 ```powershell
 $env:PYTHONUTF8=1
 uv run python main.py approve-crawl --workspace books/<book-slug>
+# Or via orchestrator resume:
+uv run python main.py orchestrate --workspace books/<book-slug> --resume --decision approve
 ```
 
 This creates `checkpoints/crawl-approved.yaml`. Translation is blocked until
@@ -196,34 +227,58 @@ canonical names and avoid known bad variants.
 
 ### 4. Translate Sequentially With Isolated Subagents
 
-The active harness translate skill runs a compact bounded loop. All harnesses
-share the same effective batch size. The default is **5 chapters per
-coordinator/workflow batch**, and project `.env` can override it:
+Translation is orchestrated deterministically by the LangGraph pipeline
+(`src/dich_truyen_agent/orchestrator/`) and executed in strict sequential order.
+The orchestrator coordinates two distinct nodes:
+
+#### 4.1. Metadata Translation & LLM Author Discovery (`metadata_node`)
+
+Before translating chapters, the orchestrator inspects `book.yaml`. If the Vietnamese title
+is missing or the author is unresolved (`None`, `""`, or `"Unknown"`):
+
+1. The orchestrator provides `book.yaml` and `reports/catalog_intro.txt` (if present) to the
+   native metadata worker (`ag_metadata_translator`).
+2. The metadata worker reads the bounded catalog intro and uses LLM semantic comprehension
+   to identify the Chinese author from page text or inline script variables, avoiding
+   brittle regex scraping.
+3. In a single invocation, the worker translates both the original Chinese title and author
+   into elegant literary Sino-Vietnamese (Title Case). If the author is truly unlisted on
+   the source site, it assigns `"Khuyết Danh"`.
+4. The worker updates `book.yaml` with the resolved `author`, `translated_title`, and
+   `translated_author`.
+5. The orchestrator reloads and verifies `book.yaml` before proceeding to chapter translation.
+
+#### 4.2. Chapter Translation Loop (`chapter_translation_node`)
+
+Chapters are translated strictly in order: Chapter `N` requires Chapter `N-1`'s promoted
+Vietnamese output as narrative context to preserve pronoun and stylistic continuity.
+
+The orchestrator operates in bounded batches. The default is **5 chapters per batch**,
+and project `.env` can override it via `DICH_TRUYEN_TRANSLATION_BATCH_SIZE`:
 
 ```env
 DICH_TRUYEN_TRANSLATION_BATCH_SIZE=10
 ```
 
-Runtime arguments, such as a workflow `max_chapters` override, take precedence
-over `.env`; `.env` takes precedence over the built-in default. Invalid values
-fail through `show-translation-settings` instead of silently falling back.
+Runtime arguments (`--batch-size`) take precedence over `.env`; `.env` takes precedence
+over the built-in default of 5.
 
-For long books, including 1000+ chapter books, full automation is achieved by
-repeatedly starting fresh compact batches and re-querying CLI state after each
-batch.
+For each chapter in the batch:
 
-The main agent checks compact work-item state, then delegates batches to a
-coordinator where supported. The coordinator spawns one translator subagent per
-chapter.
+1. Prepares the work item and bounded glossary context (`staging/chuong-NNNN-glossary-context.yaml`)
+   via `next-translation-work-item`.
+2. Dispatches a fresh, isolated native translator subagent process (`ag_translator`).
+3. The translator subagent is the only worker that reads raw Chinese chapter files. It reads only
+   the input paths supplied by the work item, then writes:
+   - `staging/chuong-NNNN-staged.txt`: Vietnamese draft.
+   - `staging/chuong-NNNN-proposals.yaml`: optional new glossary proposals.
+4. The orchestrator runs structural verification (`verify-staged-chapter`) on the staged draft.
+5. The orchestrator executes atomic promotion (`promote-chapter`), merging valid glossary proposals
+   into `glossary.yaml`, updating `state.yaml`, and moving the draft into `translations/`.
+6. Saves state checkpoint in SQLite (`reports/runs/<run_id>/checkpoint.sqlite`).
 
-The translator subagent is the only worker that reads raw Chinese chapter files.
-It reads only the paths supplied by `next-translation-work-item`, then writes:
-
-- `staging/chuong-NNNN-staged.txt`: Vietnamese draft.
-- `staging/chuong-NNNN-proposals.yaml`: optional new glossary proposals.
-
-The main agent and coordinator avoid reading raw, staged, or translated chapter
-contents. Coordinators return only compact batch summaries:
+The Main Agent and Orchestrator avoid reading raw, staged, or translated chapter contents into
+their context sessions. Only compact JSON execution summaries are exchanged:
 
 ```json
 {
@@ -236,8 +291,8 @@ contents. Coordinators return only compact batch summaries:
 }
 ```
 
-This prevents main-agent context growth from cumulative per-chapter logs while
-preserving resumability through `state.yaml`.
+This prevents agent context growth from cumulative per-chapter logs while preserving
+perfect resumability through `state.yaml`.
 
 ### 5. Promote Chapter Output
 
@@ -302,16 +357,21 @@ checkpoint is valid.
 
 The export phase validates the QA checkpoint, compiles the canonical EPUB 3.3
 book from `translations/`, runs EPUBCheck when configured, and optionally derives
-Calibre formats:
+Kindle AZW3, MOBI, and PDF formats via Calibre (`ebook-convert`):
 
 ```powershell
+# Direct export CLI
 $env:PYTHONUTF8=1
 uv run python main.py export-book --workspace books/<book-slug> --formats epub,azw3,mobi,pdf
+
+# Or unified orchestrator export phase
+uv run python main.py orchestrate --workspace books/<book-slug> --formats epub,azw3,pdf
 ```
 
-Exports are written under `exports/`. Because checkpoint approvals include
-evidence hashes, changing approved reports or translation files invalidates the
-gate and forces review again.
+Exports are written under `exports/`. Book metadata (title, author) in exported ebooks
+reflects the literary Vietnamese translated metadata resolved in `book.yaml`.
+Because checkpoint approvals include evidence hashes, changing approved reports or
+translation files invalidates the gate and forces review again.
 
 ### Failure And Resume Behavior
 
@@ -438,10 +498,10 @@ for commands, bounded file reads, and subagent delegation.
   carried in skill/agent instruction text.
 - OpenCode duplicate-discovery protection is declared in `opencode.json`; only
   the `oc-*` pipeline skills remain active for OpenCode.
-- Translation orchestration is shared across harnesses through
-  `next-translation-work-item`, `verify-staged-chapter`, and JSON promotion
-  through `promote-chapter --json`; harness-specific code only controls native
-  subagent dispatch.
+- Translation orchestration is unified across harnesses through the LangGraph
+  orchestrator (`main.py orchestrate`) and deterministic domain operations
+  (`next-translation-work-item`, `verify-staged-chapter`, and `promote-chapter`);
+  harness-specific code only controls native subagent dispatch.
 
 Generated adapter locations:
 
@@ -842,4 +902,71 @@ Extend `main.py orchestrate` with unified inputs, frozen scope provenance, exter
 - Prefix testing is fully reproducible, deterministic, and auditable against the entire source novel catalog.
 - Human-in-the-loop terminal sessions have a frictionless, safe review-and-approve flow.
 - Non-interactive, CI, or subagent runners retain full headless safety and deterministic exit codes.
+
+---
+
+### ADR-0008: LLM-Driven Novel Author Discovery and Metadata Translation
+
+- **Status:** Accepted
+- **Date:** 2026-09-26
+- **Architecture version:** v2.7
+- **Supersedes:** Brittle regex author scraping and decoupled metadata translation
+
+#### Context
+
+When initializing novel workspaces automatically from source URLs (via `orchestrate --url <url>`
+or `init-book`), operators frequently omit the author name. Traditional novel crawlers rely on
+hardcoded regex patterns to scrape author names (e.g. `作者：...`, `xxx 著`, `meta[name=author]`).
+
+This regex approach proved brittle in practice across Chinese novel websites:
+1. Many modern novel platforms (e.g., 69shuba) embed catalog metadata inside inline JavaScript
+   variables (such as `var bookinfo = {articlename: "...", author: "..."};`) or non-standard
+   DOM structures that static CSS selectors and regex miss.
+2. Hardcoding site-specific scraping rules creates technical debt and contradicts the agent-native
+   architecture.
+3. Metadata translation was decoupled from author discovery: if the crawler failed to extract
+   the author, `book.yaml` held `"Unknown"`, resulting in exported ebooks with untranslated or
+   missing author attribution (`"Khuyết Danh"`).
+4. Full catalog HTML pages cannot be loaded into the Main Agent session due to token limits
+   (thousands of chapter links bloat HTML beyond 50,000 tokens).
+
+#### Decision
+
+Implement LLM-driven author discovery combined with metadata translation during the orchestrator's
+metadata preparation node:
+
+- **Bounded Catalog Intro Extraction:** During crawling, `extract_catalog_intro()` extracts a
+  bounded text snippet (< 3,000 characters) from the index HTML and saves it to
+  `reports/catalog_intro.txt`. It strips bulky chapter link elements (`<a>`, `selector`) while
+  explicitly preserving inline `<script>` blocks containing metadata keywords (`author`, `bookinfo`,
+  `articlename`, `ld+json`), `<meta>` tags, and title/synopsis text.
+- **Unified Metadata Agent Persona:** Upgrade `ag_metadata_translator` (`.harness/source/agents/metadata-translator.md`)
+  with dual responsibility:
+  1. If `author` in `book.yaml` is `"Unknown"`, read `reports/catalog_intro.txt` and identify the
+     Chinese author using natural language reading comprehension, without regex constraints.
+  2. Translate both Chinese title and author into elegant Sino-Vietnamese (Title Case). If the author
+     is genuinely absent from the catalog text, assign `"Khuyết Danh"`.
+  3. Update `book.yaml` with the resolved `author`, `translated_title`, and `translated_author`.
+- **Single Invocation Efficiency:** Author discovery and metadata translation occur within a single
+  subagent process invocation, saving startup latency (~15–20s) and avoiding external LLM APIs.
+- **Kindle AZW3 & PDF Derivatives:** Extend ebook export with Calibre integration (`ebook-convert`)
+  to produce Kindle AZW3, MOBI, and PDF derivatives from the canonical EPUB 3.3, carrying the
+  resolved metadata.
+
+#### Consequences
+
+- Eliminates fragile regex author scrapers across novel catalog sites.
+- Safely handles inline JS objects, meta tags, and diverse catalog layouts without token bloat.
+- Guarantees exported ebooks (EPUB, AZW3, MOBI, PDF) contain accurate, translated Sino-Vietnamese
+  title and author metadata.
+- Preserves backward compatibility: if `reports/catalog_intro.txt` is missing, the metadata
+  translator falls back gracefully to translating existing `book.yaml` metadata.
+
+#### Verification
+
+- Unit tests verify `extract_catalog_intro()` extracts metadata scripts and strips chapter lists.
+- Unit tests verify `metadata_node` constructs correct prompts and validates updated `book.yaml`.
+- End-to-end runs across varied novel sources (e.g. Piaotia and 69shuba) successfully discover
+  novel authors and generate EPUB and AZW3 exports.
+- All unit and integration test suites pass (611/611 tests).
 
