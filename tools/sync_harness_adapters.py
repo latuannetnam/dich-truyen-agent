@@ -248,9 +248,14 @@ def remove_legacy_outputs() -> None:
         elif path.is_file():
             path.unlink()
 
-    workflows_dir = ROOT / ".claude" / "workflows"
-    if workflows_dir.is_dir() and not any(workflows_dir.iterdir()):
-        workflows_dir.rmdir()
+    for empty_dir in [
+        ROOT / ".claude" / "workflows",
+        ROOT / ".claude" / "agents",
+        ROOT / ".opencode" / "agent",
+        ROOT / ".codex" / "agents",
+    ]:
+        if empty_dir.is_dir() and not any(empty_dir.iterdir()):
+            empty_dir.rmdir()
 
 
 def write_outputs(rendered: list[RenderedFile]) -> None:

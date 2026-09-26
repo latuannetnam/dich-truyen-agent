@@ -125,9 +125,21 @@ class BookOrchestrator:
         if isinstance(config_or_workspace, OrchestratorConfig):
             config = config_or_workspace
         else:
-            config = OrchestratorConfig(
-                workspace_root=Path(config_or_workspace), **kwargs
-            )
+            try:
+                config = OrchestratorConfig(
+                    workspace_root=Path(config_or_workspace), **kwargs
+                )
+            except Exception as e:
+                start_at = str(kwargs.get("start_at", "auto"))
+                stop_after = str(kwargs.get("stop_after", "export"))
+                return RunOutcome(
+                    status="blocked",
+                    run_id="invalid",
+                    selected_span=(start_at, stop_after),
+                    current_phase="inspect",
+                    error_message=str(e),
+                    exit_code=3,
+                )
 
         workspace_root = config.workspace_root
         lock = WorkspaceLock(self._lock_path(workspace_root))
