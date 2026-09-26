@@ -141,3 +141,20 @@ while outcome.status == "paused":
    - Assert exit code 0.
    - Assert `exports/tien-phu-truong-sinh.pdf` and `exports/tien-phu-truong-sinh.epub` exist and size > 0.
    - Assert `translations/0001-1.txt`, `0002-2.txt`, `0003-3.txt` exist.
+
+---
+
+## 6. Documentation & Harness Adapter Synchronization
+
+1. **Source Guide & Documentation Updates:**
+   - Update `.harness/source/guides/shared-main-agent.md` with the new unified single-command workflow, auto-init, `--limit`, and `--yes` / interactive approval capabilities.
+   - Update `README.md` and `ARCHITECTURE.md` to reflect the unified end-to-end command and updated orchestrator lifecycle.
+2. **Adapter Synchronization (`tools/sync_harness_adapters.py`):**
+   - Run `uv run python tools/sync_harness_adapters.py` to regenerate all harness guides and skills:
+     - Root `AGENTS.md` and `CLAUDE.md`.
+     - Antigravity skills (`ag-orchestrate-book`, etc.).
+     - Claude Code skills (`cc-orchestrate-book`, etc.).
+     - OpenCode skills (`oc-orchestrate-book`, etc.).
+     - Codex skills (`codex-orchestrate-book`, etc.).
+   - Verify `uv run python tools/sync_harness_adapters.py --check` passes cleanly without drift.
+
