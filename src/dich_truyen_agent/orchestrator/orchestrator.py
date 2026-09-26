@@ -16,6 +16,18 @@ from dich_truyen_agent.orchestrator.models import OrchestratorConfig, RunOutcome
 from dich_truyen_agent.orchestrator.runners.agy import AgyRunner
 from dich_truyen_agent.orchestrator.runners.base import HarnessRunner
 from dich_truyen_agent.orchestrator.workspace_ops import WorkspaceOps
+from dich_truyen_agent.paths import workspace_paths
+
+
+def _lock_path(workspace_root: Path) -> Path:
+    resolved = Path(workspace_root).resolve()
+    paths = workspace_paths(resolved.parent, resolved.name)
+    locks_dir = paths.root.parent / ".orchestrator-locks"
+    return locks_dir / f"{paths.root.name}.lock"
+
+
+def _legacy_lock_path(workspace_root: Path) -> Path:
+    return Path(workspace_root).resolve() / "reports" / "runs" / ".orchestrator.lock"
 
 
 class WorkspaceLock:
@@ -71,11 +83,6 @@ class WorkspaceLock:
             except Exception:
                 pass
             self._file = None
-            try:
-                if self.lock_path.is_file():
-                    self.lock_path.unlink(missing_ok=True)
-            except Exception:
-                pass
 
     def __enter__(self) -> bool:
         return self.acquire()
@@ -99,7 +106,45 @@ class BookOrchestrator:
         return workspace_root / "reports" / "runs" / "manifest.json"
 
     def _lock_path(self, workspace_root: Path) -> Path:
-        return workspace_root / "reports" / "runs" / ".orchestrator.lock"
+        return _lock_path(workspace_root)
+
+    def _legacy_lock_path(self, workspace_root: Path) -> Path:
+        return _legacy_lock_path(workspace_root)
+
+    def _acquire_locks(
+        self, workspace_root: Path
+    ) -> tuple[WorkspaceLock | None, WorkspaceLock | None]:
+        try:
+            ext_path = self._lock_path(workspace_root)
+        except Exception:
+            return None, None
+        ext_lock = WorkspaceLock(ext_path)
+        if not ext_lock.acquire():
+            return None, None
+        legacy_path = self._legacy_lock_path(workspace_root)
+        legacy_lock = None
+        if legacy_path.is_file():
+            legacy_lock = WorkspaceLock(legacy_path)
+            if not legacy_lock.acquire():
+                ext_lock.release()
+                return None, None
+        return ext_lock, legacy_lock
+
+    def _release_locks(
+        self,
+        ext_lock: WorkspaceLock | None,
+        legacy_lock: WorkspaceLock | None,
+    ) -> None:
+        if legacy_lock is not None:
+            try:
+                legacy_lock.release()
+            except Exception:
+                pass
+        if ext_lock is not None:
+            try:
+                ext_lock.release()
+            except Exception:
+                pass
 
     def _load_manifest(self, workspace_root: Path) -> dict[str, Any] | None:
         manifest_file = self._manifest_path(workspace_root)
@@ -142,8 +187,20 @@ class BookOrchestrator:
                 )
 
         workspace_root = config.workspace_root
-        lock = WorkspaceLock(self._lock_path(workspace_root))
-        if not lock.acquire():
+        try:
+            self._lock_path(workspace_root)
+        except Exception as e:
+            return RunOutcome(
+                status="blocked",
+                run_id=config.run_id,
+                selected_span=(config.start_at, config.stop_after),
+                current_phase="inspect",
+                error_message=f"Invalid workspace path or slug: {e}",
+                exit_code=3,
+            )
+
+        ext_lock, legacy_lock = self._acquire_locks(workspace_root)
+        if ext_lock is None:
             return RunOutcome(
                 status="blocked",
                 run_id=config.run_id,
@@ -155,6 +212,16 @@ class BookOrchestrator:
             )
 
         try:
+            if not (workspace_root / "book.yaml").is_file():
+                return RunOutcome(
+                    status="blocked",
+                    run_id=config.run_id,
+                    selected_span=(config.start_at, config.stop_after),
+                    current_phase="inspect",
+                    error_message=f"workspace metadata book.yaml is missing: {workspace_root / 'book.yaml'}",
+                    exit_code=3,
+                )
+
             # Check manifest for previous paused run
             manifest = self._load_manifest(workspace_root)
             if manifest and manifest.get("status") == "paused":
@@ -277,7 +344,7 @@ class BookOrchestrator:
             )
             return outcome
         finally:
-            lock.release()
+            self._release_locks(ext_lock, legacy_lock)
 
     def resume(
         self,
@@ -286,8 +353,20 @@ class BookOrchestrator:
         **kwargs: Any,
     ) -> RunOutcome:
         workspace_root = Path(workspace)
-        lock = WorkspaceLock(self._lock_path(workspace_root))
-        if not lock.acquire():
+        try:
+            self._lock_path(workspace_root)
+        except Exception as e:
+            return RunOutcome(
+                status="blocked",
+                run_id="unknown",
+                selected_span=("auto", "export"),
+                current_phase="resume",
+                error_message=f"Invalid workspace path or slug: {e}",
+                exit_code=3,
+            )
+
+        ext_lock, legacy_lock = self._acquire_locks(workspace_root)
+        if ext_lock is None:
             return RunOutcome(
                 status="blocked",
                 run_id="unknown",
@@ -469,13 +548,13 @@ class BookOrchestrator:
             )
             return outcome
         finally:
-            lock.release()
+            self._release_locks(ext_lock, legacy_lock)
 
     def prune_terminal_runs(
         self, workspace_root: Path, max_age_days: int = 30
     ) -> list[str]:
-        lock = WorkspaceLock(self._lock_path(workspace_root))
-        if not lock.acquire():
+        ext_lock, legacy_lock = self._acquire_locks(workspace_root)
+        if ext_lock is None:
             return []
 
         pruned = []
@@ -525,6 +604,6 @@ class BookOrchestrator:
                             p.unlink(missing_ok=True)
                     pruned.append(item.name)
         finally:
-            lock.release()
+            self._release_locks(ext_lock, legacy_lock)
 
         return pruned
