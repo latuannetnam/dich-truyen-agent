@@ -108,6 +108,34 @@ def extract_title_from_index_html(html_content: str) -> str | None:
     return cleaned
 
 
+def extract_catalog_intro(
+    html_content: str | None,
+    chapter_link_selector: str | None = None,
+    max_chars: int = 3000,
+) -> str:
+    """Extract bounded introductory text from index HTML, stripping chapter lists and scripts."""
+    if not html_content or not html_content.strip():
+        return ""
+    soup = BeautifulSoup(html_content, "lxml")
+
+    # 1. Remove unwanted tags
+    for tag in soup.find_all(["script", "style", "link", "noscript", "meta"]):
+        tag.decompose()
+
+    # 2. Remove chapter link list container or links if selector is provided
+    if chapter_link_selector:
+        try:
+            for link in soup.select(chapter_link_selector):
+                link.decompose()
+        except Exception:
+            pass
+
+    # 3. Extract text
+    text = soup.get_text(separator="\n", strip=True)
+    cleaned = re.sub(r"\n\s*\n+", "\n\n", text).strip()
+    return cleaned[:max_chars]
+
+
 async def discover_initial_title(
     project_root: Path,
     source_url: str,
@@ -147,7 +175,17 @@ async def discover_initial_title(
         except Exception:
             return None
 
-    return extract_title_from_index_html(html_content)
+    title = extract_title_from_index_html(html_content)
+    if workspace_root and html_content:
+        selector = getattr(profile_source.profile.index, "chapter_link_selector", None)
+        intro_text = extract_catalog_intro(
+            html_content, chapter_link_selector=selector, max_chars=3000
+        )
+        if intro_text:
+            reports_dir = workspace_root / "reports"
+            reports_dir.mkdir(parents=True, exist_ok=True)
+            (reports_dir / "catalog_intro.txt").write_text(intro_text, encoding="utf-8")
+    return title
 
 
 async def crawl_book(
@@ -373,6 +411,19 @@ async def crawl_book(
                         status=OperationStatus.BLOCKED,
                         reason=f"catalog discovery blocked: {findings['blockers']}",
                     )
+
+                if html_content:
+                    catalog_intro_text = extract_catalog_intro(
+                        html_content,
+                        chapter_link_selector=getattr(
+                            profile_source.profile.index, "chapter_link_selector", None
+                        ),
+                        max_chars=3000,
+                    )
+                    if catalog_intro_text:
+                        paths.reports.mkdir(parents=True, exist_ok=True)
+                        intro_file = paths.reports / "catalog_intro.txt"
+                        intro_file.write_text(catalog_intro_text, encoding="utf-8")
 
                 # Check if scope record already existed and source changed
                 if paths.source_scope.is_file():
