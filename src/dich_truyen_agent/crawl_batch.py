@@ -118,8 +118,24 @@ def extract_catalog_intro(
         return ""
     soup = BeautifulSoup(html_content, "lxml")
 
-    # 1. Remove unwanted tags
-    for tag in soup.find_all(["script", "style", "link", "noscript", "meta"]):
+    # 1. Preserve informative metadata scripts/meta if present (e.g. JSON-LD, bookinfo, og metadata)
+    metadata_snippets = []
+    for script in soup.find_all("script"):
+        s_text = script.string or script.get_text() or ""
+        if any(k in s_text.lower() for k in ["author", "bookinfo", "articlename", "ld+json"]):
+            if len(s_text.strip()) < 1500:
+                metadata_snippets.append(s_text.strip())
+        script.decompose()
+
+    for meta in soup.find_all("meta"):
+        prop = str(meta.get("property", "") or meta.get("name", ""))
+        content = str(meta.get("content", ""))
+        if "author" in prop.lower() or "novel:book_name" in prop.lower():
+            if content:
+                metadata_snippets.append(f"{prop}: {content}")
+        meta.decompose()
+
+    for tag in soup.find_all(["style", "link", "noscript"]):
         tag.decompose()
 
     # 2. Remove chapter link list container or links if selector is provided
@@ -131,8 +147,9 @@ def extract_catalog_intro(
             pass
 
     # 3. Extract text
-    text = soup.get_text(separator="\n", strip=True)
-    cleaned = re.sub(r"\n\s*\n+", "\n\n", text).strip()
+    body_text = soup.get_text(separator="\n", strip=True)
+    combined = "\n\n".join(metadata_snippets + [body_text])
+    cleaned = re.sub(r"\n\s*\n+", "\n\n", combined).strip()
     return cleaned[:max_chars]
 
 

@@ -37,3 +37,25 @@ def test_extract_catalog_intro_strips_scripts_styles_and_links():
 def test_extract_catalog_intro_handles_empty_html():
     assert extract_catalog_intro("") == ""
     assert extract_catalog_intro(None) == ""
+
+
+def test_extract_catalog_intro_preserves_metadata_scripts():
+    html = """
+    <html>
+      <head>
+        <script>
+          var bookinfo = { articlename: '霍格沃茨的学习面板', author: '林曦遇鹿' };
+        </script>
+        <script src="ad.js"></script>
+        <script>console.log('irrelevant script');</script>
+      </head>
+      <body>
+        <div>Catalog text</div>
+      </body>
+    </html>
+    """
+    intro = extract_catalog_intro(html)
+    assert "林曦遇鹿" in intro
+    assert "霍格沃茨的学习面板" in intro
+    assert "irrelevant script" not in intro
+
