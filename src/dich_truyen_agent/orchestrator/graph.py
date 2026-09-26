@@ -516,8 +516,11 @@ def build_orchestrator_graph(
             return {"status": "blocked", "error_message": "book.yaml missing"}
         metadata = load_yaml_model(paths.book, BookMetadata)
 
-        needs_translation = not metadata.translated_title or (
-            metadata.author and not metadata.translated_author
+        author_unresolved = not metadata.author or metadata.author.strip() in ("", "Unknown")
+        needs_translation = (
+            not metadata.translated_title
+            or author_unresolved
+            or not metadata.translated_author
         )
         if needs_translation:
             model = (
@@ -529,12 +532,32 @@ def build_orchestrator_graph(
                 if config
                 else None
             )
+
+            intro_file = paths.reports / "catalog_intro.txt"
+            intro_context_line = ""
+            author_instructions = ""
+            if author_unresolved:
+                if intro_file.is_file():
+                    intro_context_line = f"Catalog intro context path: {intro_file}\n"
+                    author_instructions = (
+                        "Source author is 'Unknown'. Please inspect 'Catalog intro context path' using Read tool,\n"
+                        "identify the Chinese author from context without assuming fixed formatting, and update\n"
+                        "'author' in book.yaml with the discovered Chinese name.\n"
+                    )
+                else:
+                    author_instructions = (
+                        "Source author is 'Unknown' and catalog intro file is absent. Keep author as 'Unknown'\n"
+                        "and set translated_author to 'Khuyết Danh'.\n"
+                    )
+
             prompt = (
                 f"Translate novel metadata in book.yaml for book: {metadata.title}\n"
                 f"Path to book.yaml: {paths.book}\n"
                 f"Source title: {metadata.title}\n"
                 f"Source author: {metadata.author or 'Unknown'}\n"
-                "Please update book.yaml with translated_title and translated_author in Vietnamese.\n"
+                f"{intro_context_line}"
+                f"{author_instructions}"
+                "Please update book.yaml with resolved author, translated_title, and translated_author in Vietnamese.\n"
                 "Do NOT modify chapters.yaml or state.yaml.\n"
             )
             runner.run_phase(
