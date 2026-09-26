@@ -176,7 +176,7 @@ async def discover_initial_title(
             return None
 
     title = extract_title_from_index_html(html_content)
-    if workspace_root and html_content:
+    if workspace_root and workspace_root.exists() and html_content:
         selector = getattr(profile_source.profile.index, "chapter_link_selector", None)
         intro_text = extract_catalog_intro(
             html_content, chapter_link_selector=selector, max_chars=3000
@@ -246,6 +246,7 @@ async def crawl_book(
     has_empty_catalog = False
     book_metadata: BookMetadata | None = None
     existing_catalog: ChapterCatalog | None = None
+    html_content: str | None = None
     if not is_new:
         if paths.book.is_file():
             try:
@@ -412,19 +413,6 @@ async def crawl_book(
                         reason=f"catalog discovery blocked: {findings['blockers']}",
                     )
 
-                if html_content:
-                    catalog_intro_text = extract_catalog_intro(
-                        html_content,
-                        chapter_link_selector=getattr(
-                            profile_source.profile.index, "chapter_link_selector", None
-                        ),
-                        max_chars=3000,
-                    )
-                    if catalog_intro_text:
-                        paths.reports.mkdir(parents=True, exist_ok=True)
-                        intro_file = paths.reports / "catalog_intro.txt"
-                        intro_file.write_text(catalog_intro_text, encoding="utf-8")
-
                 # Check if scope record already existed and source changed
                 if paths.source_scope.is_file():
                     try:
@@ -534,6 +522,19 @@ async def crawl_book(
             if inspect_res.status is OperationStatus.BLOCKED:
                 await crawler.close()
                 return inspect_res
+
+        if html_content:
+            catalog_intro_text = extract_catalog_intro(
+                html_content,
+                chapter_link_selector=getattr(
+                    profile_source.profile.index, "chapter_link_selector", None
+                ),
+                max_chars=3000,
+            )
+            if catalog_intro_text:
+                paths.reports.mkdir(parents=True, exist_ok=True)
+                intro_file = paths.reports / "catalog_intro.txt"
+                intro_file.write_text(catalog_intro_text, encoding="utf-8")
 
     except Exception as e:
         await crawler.close()
