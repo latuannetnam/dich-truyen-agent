@@ -4,6 +4,7 @@ from collections.abc import Callable
 from datetime import UTC, datetime
 import json
 from pathlib import Path
+import shutil
 import subprocess
 from typing import Any
 
@@ -23,6 +24,15 @@ class AgyRunner:
         available_models: list[str] | None = None,
         process_runner: Callable[..., ProcessResult] | None = None,
     ) -> None:
+        if executable == "agy" and shutil.which("agy") is None:
+            candidates = [
+                Path.home() / "AppData" / "Local" / "agy" / "bin" / "agy.exe",
+                Path.home() / ".gemini" / "bin" / "agy.exe",
+            ]
+            for cand in candidates:
+                if cand.is_file():
+                    executable = str(cand)
+                    break
         self.executable = executable
         self.allow_permission_bypass = allow_permission_bypass
         self._available_models = available_models
@@ -64,9 +74,20 @@ class AgyRunner:
                 check=False,
             )
             if res.returncode == 0:
-                lines = [line.strip() for line in res.stdout.splitlines() if line.strip()]
-                # Strip any potential table headers or decoration
-                models = [m for m in lines if not m.startswith("-") and not m.lower().startswith("model")]
+                raw_lines = [
+                    line.strip() for line in res.stdout.splitlines() if line.strip()
+                ]
+                models = []
+                for line in raw_lines:
+                    if (
+                        line.startswith("-")
+                        or line.lower().startswith("model")
+                        or line.lower().startswith("fetching")
+                    ):
+                        continue
+                    slug = line.split()[0]
+                    if slug:
+                        models.append(slug)
                 self._cached_available_models = models
                 return list(models)
         except Exception:
@@ -117,7 +138,9 @@ class AgyRunner:
                 log_dir.mkdir(parents=True, exist_ok=True)
                 stdout_path = log_dir / f"{phase}_preflight_stdout.log"
                 stderr_path = log_dir / f"{phase}_preflight_stderr.log"
-                stderr_path.write_text(f"Preflight error: {validation.reason}\n", encoding="utf-8")
+                stderr_path.write_text(
+                    f"Preflight error: {validation.reason}\n", encoding="utf-8"
+                )
                 stdout_path.write_text("", encoding="utf-8")
                 return HarnessRunResult(
                     exit_code=1,

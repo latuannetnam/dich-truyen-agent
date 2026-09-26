@@ -145,8 +145,10 @@ def test_find_epubcheck(monkeypatch) -> None:
     # 1. Missing tool completely
     monkeypatch.delenv("DICH_TRUYEN_EPUBCHECK_PATH", raising=False)
     monkeypatch.setattr("shutil.which", lambda x: None)
-    tool, is_jar = find_epubcheck()
-    assert tool is None
+    with monkeypatch.context() as m:
+        m.setattr(Path, "is_file", lambda self: False)
+        tool, is_jar = find_epubcheck()
+        assert tool is None
 
     # 2. Configured as jar file
     temp_jar = Path("temp_epubcheck.jar")

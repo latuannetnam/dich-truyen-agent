@@ -239,6 +239,15 @@ def find_epubcheck() -> tuple[Path | str | None, bool]:
     if which_epubcheck:
         return which_epubcheck, False
 
+    # Check common user tools directories
+    user_tools = [
+        Path.home() / "tools" / "epubcheck-5.3.0" / "epubcheck.jar",
+        Path.home() / "tools" / "epubcheck" / "epubcheck.jar",
+    ]
+    for cand in user_tools:
+        if cand.is_file():
+            return cand, True
+
     return None, False
 
 

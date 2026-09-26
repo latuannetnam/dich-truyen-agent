@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import os
 from pathlib import Path
 from typing import Any
 
@@ -308,9 +309,17 @@ class WorkspaceOps:
             str(delay_seconds),
             "--json",
         ]
+        from dich_truyen_agent.paths import find_project_root
+
+        src_dir = str(find_project_root(workspace_root) / "src")
+        existing_pp = os.environ.get("PYTHONPATH", "")
+        crawl_env = dict(os.environ)
+        crawl_env["PYTHONPATH"] = f"{src_dir}{os.pathsep}{existing_pp}" if existing_pp else src_dir
+
         proc_res = run_process(
             argv,
             cwd=workspace_root,
+            env=crawl_env,
             timeout_seconds=timeout_seconds,
             stdout_path=stdout_file,
             stderr_path=stderr_file,

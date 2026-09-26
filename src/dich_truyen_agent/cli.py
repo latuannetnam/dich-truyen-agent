@@ -684,3 +684,7 @@ def main() -> None:
         _print_json_result(result)
     else:
         _print_result(result)
+
+
+if __name__ == "__main__":
+    main()

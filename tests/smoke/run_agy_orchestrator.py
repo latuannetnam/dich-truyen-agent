@@ -24,10 +24,13 @@ ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT / "src") not in sys.path:
     sys.path.insert(0, str(ROOT / "src"))
 
+from dich_truyen_agent.models import BookMetadata, ChapterCatalog  # noqa: E402
 from dich_truyen_agent.orchestrator.models import OrchestratorConfig  # noqa: E402
 from dich_truyen_agent.orchestrator.orchestrator import BookOrchestrator  # noqa: E402
 from dich_truyen_agent.orchestrator.runners.agy import AgyRunner  # noqa: E402
 from dich_truyen_agent.orchestrator.workspace_ops import WorkspaceOps  # noqa: E402
+from dich_truyen_agent.paths import workspace_paths  # noqa: E402
+from dich_truyen_agent.styles import load_selected_style  # noqa: E402
 from dich_truyen_agent.workspace import initialize_workspace  # noqa: E402
 
 
@@ -147,19 +150,24 @@ def main() -> int:
 
     try:
         # Initialize book
-        init_res = initialize_workspace(
-            workspace_root=tmp_dir,
-            slug="smoke-book",
+        style = load_selected_style(ROOT, Path("tien_hiep"))
+        metadata = BookMetadata(
+            book_slug="smoke-book",
             title="Smoke Test Novel",
             source_url=f"{base_url}/index.html",
             author="Smoke Author",
-            style_name="tien_hiep",
+        )
+        init_res = initialize_workspace(
+            books_root=tmp_dir,
+            metadata=metadata,
+            catalog=ChapterCatalog(),
+            style=style,
         )
         if init_res.status.value != "ok":
             print(f"[smoke] FAILED: workspace initialization failed: {init_res.reason}")
             return 1
 
-        workspace_root = tmp_dir / "books" / "smoke-book"
+        workspace_root = workspace_paths(tmp_dir, "smoke-book").root
         orchestrator = BookOrchestrator(runner=runner, ops=WorkspaceOps())
 
         print("[smoke] Running orchestrator: crawl -> export...")
