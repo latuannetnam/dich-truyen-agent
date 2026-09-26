@@ -51,7 +51,11 @@ from dich_truyen_agent.workspace import (
 )
 
 
-def _compute_crawl_evidence_hashes(workspace_root: Path) -> dict[str, str]:
+def _compute_crawl_evidence_hashes(
+    workspace_root: Path,
+    *,
+    require_scope: bool = True,
+) -> dict[str, str]:
     paths = workspace_paths(workspace_root.parent, workspace_root.name)
     hashes: dict[str, str] = {}
     if paths.chapters.is_file():
@@ -64,10 +68,23 @@ def _compute_crawl_evidence_hashes(workspace_root: Path) -> dict[str, str]:
     crawl_rep = paths.reports / "crawl.yaml"
     if crawl_rep.is_file():
         hashes["reports/crawl.yaml"] = sha256_file(crawl_rep)
+    if paths.book.is_file():
+        meta = load_yaml_model(paths.book, BookMetadata)
+        if meta.scope_managed:
+            if paths.source_scope.is_file():
+                hashes["reports/source-scope.yaml"] = sha256_file(paths.source_scope)
+            elif require_scope:
+                raise ValueError(
+                    "scope_managed workspace missing reports/source-scope.yaml"
+                )
     return hashes
 
 
-def _compute_qa_evidence_hashes(workspace_root: Path) -> dict[str, str]:
+def _compute_qa_evidence_hashes(
+    workspace_root: Path,
+    *,
+    require_scope: bool = True,
+) -> dict[str, str]:
     paths = workspace_paths(workspace_root.parent, workspace_root.name)
     hashes: dict[str, str] = {}
     if paths.chapters.is_file():
@@ -84,6 +101,15 @@ def _compute_qa_evidence_hashes(workspace_root: Path) -> dict[str, str]:
     qa_rep = paths.reports / "qa-report.yaml"
     if qa_rep.is_file():
         hashes["reports/qa-report.yaml"] = sha256_file(qa_rep)
+    if paths.book.is_file():
+        meta = load_yaml_model(paths.book, BookMetadata)
+        if meta.scope_managed:
+            if paths.source_scope.is_file():
+                hashes["reports/source-scope.yaml"] = sha256_file(paths.source_scope)
+            elif require_scope:
+                raise ValueError(
+                    "scope_managed workspace missing reports/source-scope.yaml"
+                )
     return hashes
 
 
@@ -196,7 +222,9 @@ def build_orchestrator_graph(
             }
 
         # Snapshot protected workspace file hashes
-        protected_hashes = _compute_crawl_evidence_hashes(workspace_root)
+        protected_hashes = _compute_crawl_evidence_hashes(
+            workspace_root, require_scope=False
+        )
         paths = workspace_paths(workspace_root.parent, workspace_root.name)
         if paths.book.is_file():
             protected_hashes["book.yaml"] = sha256_file(paths.book)
@@ -407,7 +435,14 @@ def build_orchestrator_graph(
         current_report_hash = (
             sha256_file(crawl_rep_path) if crawl_rep_path.is_file() else None
         )
-        current_evidence_hashes = _compute_crawl_evidence_hashes(workspace_root)
+        try:
+            current_evidence_hashes = _compute_crawl_evidence_hashes(workspace_root)
+        except Exception as err:
+            return {
+                "status": "blocked",
+                "pending_approval": None,
+                "error_message": f"evidence verification failed: {err}",
+            }
         if (
             current_report_hash != report_hash
             or current_evidence_hashes != evidence_hashes
@@ -842,7 +877,14 @@ def build_orchestrator_graph(
         current_report_hash = (
             sha256_file(qa_rep_path) if qa_rep_path.is_file() else None
         )
-        current_evidence_hashes = _compute_qa_evidence_hashes(workspace_root)
+        try:
+            current_evidence_hashes = _compute_qa_evidence_hashes(workspace_root)
+        except Exception as err:
+            return {
+                "status": "blocked",
+                "pending_approval": None,
+                "error_message": f"cannot approve QA: workspace evidence changed during pause ({err})",
+            }
         if (
             current_report_hash != report_hash
             or current_evidence_hashes != evidence_hashes

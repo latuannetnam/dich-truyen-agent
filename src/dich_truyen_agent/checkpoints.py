@@ -16,7 +16,12 @@ from dich_truyen_agent.models import (
     OperationStatus,
     QAReport,
 )
-from dich_truyen_agent.paths import find_project_root, validate_workspace_relative_path, workspace_paths
+from dich_truyen_agent.paths import (
+    find_project_root,
+    validate_workspace_relative_path,
+    workspace_paths,
+)
+from dich_truyen_agent.scope import load_source_scope, validate_scope_catalog
 from dich_truyen_agent.storage import atomic_write_yaml, load_yaml_model, sha256_file
 
 
@@ -67,11 +72,11 @@ def require_checkpoint_scope(
     res = check_gate(workspace_root, checkpoint_type)
     if res.status is not OperationStatus.OK:
         return res
-    
+
     paths = workspace_paths(workspace_root.parent, workspace_root.name)
     approval_path = paths.checkpoint(checkpoint_type.value)
     record = load_yaml_model(approval_path, CheckpointRecord)
-    
+
     if required_scope == ApprovalScope.FULL and record.scope == ApprovalScope.PARTIAL:
         return OperationResult(
             status=OperationStatus.BLOCKED,
@@ -88,6 +93,7 @@ def check_gate(
     strict: bool = False,
 ) -> OperationResult:
     workspace_root = workspace_root.resolve()
+    paths = workspace_paths(workspace_root.parent, workspace_root.name)
     approval_path = workspace_root / "checkpoints" / f"{checkpoint_type.value}.yaml"
     relative_approval = _relative(approval_path, workspace_root)
     if not approval_path.is_file():
@@ -107,6 +113,42 @@ def check_gate(
                 raise ValueError(f"stale evidence: {relative_path}")
 
         if strict:
+            metadata = (
+                load_yaml_model(paths.book, BookMetadata)
+                if paths.book.is_file()
+                else None
+            )
+            if metadata and metadata.scope_managed:
+                if "reports/source-scope.yaml" not in record.evidence_hashes:
+                    return OperationResult(
+                        status=OperationStatus.BLOCKED,
+                        reason=f"{checkpoint_type.value} approval missing reports/source-scope.yaml in evidence for scope-managed workspace",
+                        approval_path=relative_approval,
+                    )
+                if not paths.source_scope.is_file():
+                    return OperationResult(
+                        status=OperationStatus.BLOCKED,
+                        reason="missing reports/source-scope.yaml for scope-managed workspace",
+                        approval_path=relative_approval,
+                    )
+                try:
+                    scope_rec = load_source_scope(paths.source_scope)
+                    if paths.chapters.is_file():
+                        cat = load_yaml_model(paths.chapters, ChapterCatalog)
+                        val = validate_scope_catalog(scope_rec, cat)
+                        if not val.is_valid:
+                            return OperationResult(
+                                status=OperationStatus.BLOCKED,
+                                reason=f"{checkpoint_type.value} scope validation failed: {val.reason}",
+                                approval_path=relative_approval,
+                            )
+                except Exception as err:
+                    return OperationResult(
+                        status=OperationStatus.BLOCKED,
+                        reason=f"stale or invalid reports/source-scope.yaml: {err}",
+                        approval_path=relative_approval,
+                    )
+
             if checkpoint_type is CheckpointType.CRAWL_APPROVED:
                 if "chapters.yaml" not in record.evidence_hashes:
                     return OperationResult(
@@ -183,13 +225,21 @@ def approve_full_crawl(
                 from dich_truyen_agent.crawl_profiles import load_active_crawl_profile
                 from dich_truyen_agent.crawl_reports import build_crawl_report
                 from dich_truyen_agent.models import CrawlSettings
+
                 metadata = load_yaml_model(paths.book, BookMetadata)
                 project_root = find_project_root(workspace_root)
-                profile_source = load_active_crawl_profile(project_root, workspace_root, metadata.source_url)
-                report = build_crawl_report(workspace_root, profile_source.profile, CrawlSettings(max_chapters=0))
+                profile_source = load_active_crawl_profile(
+                    project_root, workspace_root, metadata.source_url
+                )
+                report = build_crawl_report(
+                    workspace_root,
+                    profile_source.profile,
+                    CrawlSettings(max_chapters=0),
+                )
 
         # Check full-book criteria
         from dich_truyen_agent.crawl_reports import approval_blockers
+
         blockers = approval_blockers(report)
         if blockers:
             return OperationResult(
@@ -213,7 +263,35 @@ def approve_full_crawl(
                 report_paths=[str(paths.crawl_report)],
             )
 
+        metadata = (
+            load_yaml_model(paths.book, BookMetadata) if paths.book.is_file() else None
+        )
+        if metadata and metadata.scope_managed:
+            if not paths.source_scope.is_file():
+                return OperationResult(
+                    status=OperationStatus.BLOCKED,
+                    reason="crawl approval blocked: scope_managed workspace is missing reports/source-scope.yaml",
+                    report_paths=[str(paths.crawl_report)],
+                )
+            try:
+                scope_rec = load_source_scope(paths.source_scope)
+                scope_val = validate_scope_catalog(scope_rec, catalog)
+                if not scope_val.is_valid:
+                    return OperationResult(
+                        status=OperationStatus.BLOCKED,
+                        reason=f"crawl approval blocked: source scope validation failed: {scope_val.reason}",
+                        report_paths=[str(paths.crawl_report)],
+                    )
+            except Exception as err:
+                return OperationResult(
+                    status=OperationStatus.BLOCKED,
+                    reason=f"crawl approval blocked: invalid source scope record: {err}",
+                    report_paths=[str(paths.crawl_report)],
+                )
+
         evidence: list[str] = ["chapters.yaml", "reports/crawl.yaml"]
+        if metadata and metadata.scope_managed:
+            evidence.append("reports/source-scope.yaml")
         for tc in catalog.chapters:
             raw_rel = f"raw/{tc.raw_filename}"
             raw_file = validate_workspace_relative_path(workspace_root, raw_rel)
@@ -252,29 +330,6 @@ def approve_current_qa(
         paths = workspace_paths(workspace_root.parent, workspace_root.name)
         qa_report_path = paths.reports / "qa-report.yaml"
 
-        if report is None:
-            if qa_report_path.is_file():
-                report = load_yaml_model(qa_report_path, QAReport)
-            else:
-                from dich_truyen_agent.qa import run_qa_check
-                report = run_qa_check(workspace_root)
-
-        error_count = report.summary.get("error_count", 0)
-        if error_count > 0:
-            return OperationResult(
-                status=OperationStatus.BLOCKED,
-                reason=f"QA approval blocked: workspace contains {error_count} critical errors. Run check-translation for details.",
-                report_paths=["reports/qa-report.yaml"],
-            )
-
-        findings_count = report.summary.get("findings_count", len(report.findings))
-        if findings_count > 0 and not allow_warnings:
-            return OperationResult(
-                status=OperationStatus.BLOCKED,
-                reason=f"QA approval blocked: workspace contains {findings_count} findings and allow_warnings is False.",
-                report_paths=["reports/qa-report.yaml"],
-            )
-
         if not paths.chapters.is_file():
             return OperationResult(
                 status=OperationStatus.BLOCKED,
@@ -296,9 +351,61 @@ def approve_current_qa(
                 report_paths=["reports/qa-report.yaml"],
             )
 
+        metadata = (
+            load_yaml_model(paths.book, BookMetadata) if paths.book.is_file() else None
+        )
+        if metadata and metadata.scope_managed:
+            if not paths.source_scope.is_file():
+                return OperationResult(
+                    status=OperationStatus.BLOCKED,
+                    reason="QA approval blocked: scope_managed workspace is missing reports/source-scope.yaml",
+                    report_paths=["reports/qa-report.yaml"],
+                )
+            try:
+                scope_rec = load_source_scope(paths.source_scope)
+                scope_val = validate_scope_catalog(scope_rec, catalog)
+                if not scope_val.is_valid:
+                    return OperationResult(
+                        status=OperationStatus.BLOCKED,
+                        reason=f"QA approval blocked: source scope validation failed: {scope_val.reason}",
+                        report_paths=["reports/qa-report.yaml"],
+                    )
+            except Exception as err:
+                return OperationResult(
+                    status=OperationStatus.BLOCKED,
+                    reason=f"QA approval blocked: invalid source scope record: {err}",
+                    report_paths=["reports/qa-report.yaml"],
+                )
+
+        if report is None:
+            if qa_report_path.is_file():
+                report = load_yaml_model(qa_report_path, QAReport)
+            else:
+                from dich_truyen_agent.qa import run_qa_check
+
+                report = run_qa_check(workspace_root)
+
+        error_count = report.summary.get("error_count", 0)
+        if error_count > 0:
+            return OperationResult(
+                status=OperationStatus.BLOCKED,
+                reason=f"QA approval blocked: workspace contains {error_count} critical errors. Run check-translation for details.",
+                report_paths=["reports/qa-report.yaml"],
+            )
+
+        findings_count = report.summary.get("findings_count", len(report.findings))
+        if findings_count > 0 and not allow_warnings:
+            return OperationResult(
+                status=OperationStatus.BLOCKED,
+                reason=f"QA approval blocked: workspace contains {findings_count} findings and allow_warnings is False.",
+                report_paths=["reports/qa-report.yaml"],
+            )
+
         atomic_write_yaml(qa_report_path, report)
 
         evidence = ["chapters.yaml", "state.yaml", "reports/qa-report.yaml"]
+        if metadata and metadata.scope_managed:
+            evidence.append("reports/source-scope.yaml")
         for entry in catalog.chapters:
             trans_file = paths.translations / entry.translation_filename
             if not trans_file.is_file():
@@ -322,4 +429,3 @@ def approve_current_qa(
             status=OperationStatus.ERROR,
             reason=f"QA approval failed: {error}",
         )
-
