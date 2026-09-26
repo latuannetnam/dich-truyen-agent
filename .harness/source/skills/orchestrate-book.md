@@ -12,18 +12,31 @@ The orchestrator manages the full book lifecycle through deterministic workspace
 
 ## CLI Usage
 
-### 1. Full Automated Workflow (Default)
+### 1. Unified Single-Command Novel Creation & Run (Recommended)
 
-Start or resume an initialized book through the remaining lifecycle (crawl -> translate -> QA -> export):
+Run a new novel directly from its source URL through crawl, translation, QA, and export in one command:
 
 ```powershell
 $env:PYTHONUTF8=1
-uv run python main.py orchestrate --workspace books/<book-slug>
+uv run python main.py orchestrate --url "<source-url>" --slug <book-slug> --style <style> [--limit <N>] [--formats epub,pdf] [-y]
+```
+
+- `--style`: Required for new workspaces (`tien_hiep`, `mat_the`, `do_thi`, `general`). Recommend a style profile and confirm with the user before running.
+- `--limit <N>`: Freezes the workspace to the first `N` chapters of the discovered source novel, writing provenance to `reports/source-scope.yaml`.
+- `-y`, `--yes`: Clean-only auto-approval policy (auto-approves gates only if there are zero warnings and zero errors).
+
+### 2. Existing Workspace Execution
+
+Start or resume an existing book workspace through the remaining lifecycle (crawl -> translate -> QA -> export):
+
+```powershell
+$env:PYTHONUTF8=1
+uv run python main.py orchestrate --workspace books/<book-slug> [-y]
 ```
 
 Defaults: `--start-at auto`, `--stop-after export`, `--batch-size 5`.
 
-### 2. Bounded Phase Spans
+### 3. Bounded Phase Spans
 
 Run only specific phases of the workflow:
 
@@ -51,7 +64,7 @@ uv run python main.py orchestrate --workspace books/<book-slug> --start-at trans
 
 Valid phases in order: `crawl` -> `translate` -> `qa` -> `export`.
 
-### 3. Resuming and Approval Decisions
+### 4. Resuming and Approval Decisions
 
 When a run pauses for manual review (crawl or QA approval with warnings), it exits with code 2:
 
@@ -72,7 +85,7 @@ $env:PYTHONUTF8=1
 uv run python main.py orchestrate --workspace books/<book-slug> --resume
 ```
 
-### 4. Tuning Models and Timeouts
+### 5. Tuning Models and Timeouts
 
 ```powershell
 $env:PYTHONUTF8=1

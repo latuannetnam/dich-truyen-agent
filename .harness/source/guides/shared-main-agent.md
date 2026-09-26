@@ -8,9 +8,9 @@ This shared guide defines the agent-native orchestration workflow and developmen
 
 The novel workspace evolves through deterministic gates managed by the central orchestrator CLI:
 
-1. Initialize the workspace with `init-book`.
+1. Create and orchestrate directly via `orchestrate --url "<source-url>" --slug <book-slug> --style <style> [--limit <N>]`, or initialize an empty workspace with `init-book`.
 2. Orchestrate pipeline phases via `orchestrate --workspace books/<book-slug> [--start-at <phase>] [--stop-after <phase>]`.
-   - **Crawl:** Discovers the chapter catalog and downloads raw chapters.
+   - **Crawl:** Discovers the chapter catalog, validates source scope, and downloads raw chapters.
    - **Translate:** Translates chapters strictly in order with isolated native workers.
    - **QA:** Scans for residue, length anomalies, and glossary conflicts.
    - **Export:** Validates compliance and compiles canonical EPUB and derivatives.
@@ -168,7 +168,7 @@ $env:UV_CACHE_DIR="$PWD\.uv-cache"
 
 ### Architecture and Ownership
 
-- Detailed design: `docs/superpowers/specs/2026-09-25-orchestrator-langgraph-design.md`.
+- Detailed design: `docs/superpowers/specs/2026-09-25-orchestrator-langgraph-design.md` and `docs/superpowers/specs/2026-09-26-unified-orchestrator-cli-design.md`.
 - **Deterministic domain operations** (`src/dich_truyen_agent/`): Own crawler, verification, atomic chapter promotion, QA scanning, approval writes, and ebook export.
 - **Orchestrator** (`src/dich_truyen_agent/orchestrator/`): Coordinates phase routing, process supervision, attempt journals, SQLite checkpoints (`reports/runs/<run_id>/checkpoint.sqlite`), and workspace locking.
 - **Harness runner** (`orchestrator/runners/agy.py`): Supervises Antigravity CLI processes; never decides domain success independently.
