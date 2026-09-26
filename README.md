@@ -70,23 +70,26 @@ uv run pytest
 
 ## Quick Usage
 
-### 1. Initialize A Book Workspace
+### 1. Unified Single-Command Novel Run (Recommended)
+
+Run a novel directly from its source URL through crawl, translation, QA, and export in a single command:
 
 ```powershell
 $env:PYTHONUTF8=1
-uv run python main.py init-book --slug <book-slug> --title "<title>" --source-url "<source-url>" [--author "<author>"]
+uv run python main.py orchestrate --url "<source-url>" --slug <book-slug> --style <style> [--limit <N>] [--formats epub,pdf] [-y]
 ```
 
-This creates `books/<book-slug>/` with metadata, state, style, staging,
-translation, report, and checkpoint directories.
+- `--style`: Genre style profile (`tien_hiep`, `mat_the`, `do_thi`, `general`).
+- `--limit <N>`: Freezes the workspace to the first `N` chapters of the source novel, recording complete source catalog provenance in `reports/source-scope.yaml`.
+- `-y`, `--yes`: Clean-only auto-approval policy (auto-approves gates only if there are zero warnings and zero errors).
 
-### 2. Run Pipeline Orchestration
+### 2. Existing Workspace Execution
 
-You can run the full end-to-end pipeline or any phase slice with the unified orchestrator:
+Run the remaining pipeline or explicit phase bounds on an existing workspace:
 
 ```powershell
 $env:PYTHONUTF8=1
-uv run python main.py orchestrate --workspace books/<book-slug> [--start-at <phase>] [--stop-after <phase>] [--auto-approve]
+uv run python main.py orchestrate --workspace books/<book-slug> [--start-at <phase>] [--stop-after <phase>] [-y]
 ```
 
 Or trigger through the harness-specific orchestrate skill:
@@ -97,13 +100,26 @@ $oc-orchestrate-book books/<book-slug>/
 $codex-orchestrate-book books/<book-slug>/
 ```
 
-If the run pauses for manual gate approval (exit code 2), inspect reports and resume:
+### 3. Gate Approvals and Resuming
+
+When a crawl or QA report contains warnings:
+- **Interactive TTY:** The orchestrator displays the gate summary, report path, report hash, and chapter counts, then prompts `Approve [y/N]?`. Answering `y` continues immediately in the same process.
+- **Headless / Non-TTY:** The orchestrator pauses with exit code 2. Inspect reports under `reports/` and resume explicitly:
 ```powershell
 $env:PYTHONUTF8=1
 uv run python main.py orchestrate --workspace books/<book-slug> --resume --decision approve
 ```
 
-### 3. Individual Phase Skills (Thin Compatibility Wrappers)
+### 4. Explicit Workspace Initialization (Advanced / Manual)
+
+If you prefer to initialize a directory before running:
+
+```powershell
+$env:PYTHONUTF8=1
+uv run python main.py init-book --slug <book-slug> --title "<title>" --source-url "<source-url>" --style <style> [--author "<author>"]
+```
+
+### 5. Individual Phase Skills (Thin Compatibility Wrappers)
 
 Individual phase skills delegate directly to `orchestrate --start-at <phase> --stop-after <phase>`:
 

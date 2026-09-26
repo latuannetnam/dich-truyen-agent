@@ -10,7 +10,7 @@ For setup and everyday usage, see [README.md](README.md).
 
 ## Architecture Versioning
 
-This document describes **Translation Orchestration Architecture v2.5**.
+This document describes **Translation Orchestration Architecture v2.6**.
 
 Architecture changes are versioned when they alter durable workspace contracts,
 CLI orchestration contracts, generated harness behavior, or recovery semantics.
@@ -49,6 +49,12 @@ Current versions:
   and the unified `orchestrate` CLI subcommand. Harness skills become thin
   wrappers around `orchestrate`. Coordinator subagents and workflows are retired.
   See ADR-0006.
+- **v2.6 - unified orchestrator CLI, frozen prefix scope & interactive gate approvals:** adds
+  single-command URL execution (`main.py orchestrate --url ... --slug ... --style ...`),
+  provenance-backed frozen prefix scope (`reports/source-scope.yaml`), external workspace locking
+  (`books/.orchestrator-locks/<slug>.lock`), interactive terminal gate approval (`[y/N]`),
+  clean-only auto-approval (`-y`), and strict run policy pinning across pause/resume. Legacy
+  full-book workspaces retain existing contracts. See ADR-0007.
 
 
 Versioned changes must update:
@@ -800,3 +806,40 @@ exposed through `main.py orchestrate`:
 - Runs can be interrupted at any chapter or decision point and resumed deterministically with `--resume`.
 - Gate checks and approvals are automated with `--auto-approve` or interactive decisions (`--decision approve`).
 - Cross-platform file locking (`WorkspaceLock`) prevents concurrent mutations.
+
+---
+
+### ADR-0007: Unified Orchestrator CLI, Frozen Prefix Scope & Interactive Approval UX
+
+- **Status:** Accepted
+- **Date:** 2026-09-26
+- **Architecture version:** v2.6
+- **Supersedes:** Separate init/crawl/translate commands and manual approval-only flows
+
+#### Context
+
+While v2.5 introduced LangGraph orchestration, running a new novel still required multiple manual steps:
+1. `init-book` to create the workspace.
+2. `orchestrate` with separate flags and approvals.
+3. No mechanism to test or translate a small prefix (e.g., first 3 chapters) with full source provenance; `--max-chapters` only truncated the download without preserving source evidence.
+4. Workspace locking was inside `reports/runs/`, leaving initial workspace creation unprotected from race conditions.
+5. Operators in interactive terminals had to exit, inspect reports, and rerun `orchestrate --resume --decision approve` manually instead of reviewing and approving directly.
+
+#### Decision
+
+Extend `main.py orchestrate` with unified inputs, frozen scope provenance, external locks, and interactive UX:
+- **One-Command URL Execution:** `orchestrate --url <url> --slug <slug> --style <style> [--limit N]` automatically initializes the workspace (discovering or verifying metadata title) under an external lock.
+- **Frozen Prefix Scope:** When `--limit N` is specified, `reports/source-scope.yaml` records the complete discovered source catalog alongside the selected prefix IDs and a cryptographic source digest. Gate evidence incorporates this file. Modifying the scope limit on an existing scoped workspace is blocked.
+- **External Workspace Locking:** Locks are anchored at `<books-root>/.orchestrator-locks/<slug>.lock`, protecting the workspace from the start of auto-initialization through export.
+- **Interactive Approval UX:** In interactive TTY environments, gate interrupts display concise metrics, warning summaries, report hashes, and prompt `[y/N]`. Affirmative input continues immediately in the same process; negative rejects; Enter/EOF defers safely with exit code 2.
+- **Clean-Only Auto-Approval (`-y`, `--yes`):** Automatically approves gates only when reports have zero warnings and zero errors. Any warning defers to human review.
+- **Strict Policy Pinning:** Run configuration (phase span, models, scope limit, timeouts, batch size) is serialized into `run_summary.json` at run creation; `--resume` rejects conflicting command-line overrides and verifies source digest integrity.
+- **Legacy Compatibility:** Full-book workspaces and legacy workspaces lacking `scope_managed` remain fully supported without requiring scope files.
+
+#### Consequences
+
+- Novel translation can be kicked off with a single CLI command from source URL to EPUB/PDF.
+- Prefix testing is fully reproducible, deterministic, and auditable against the entire source novel catalog.
+- Human-in-the-loop terminal sessions have a frictionless, safe review-and-approve flow.
+- Non-interactive, CI, or subagent runners retain full headless safety and deterministic exit codes.
+

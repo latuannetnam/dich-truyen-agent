@@ -57,12 +57,29 @@ Do not omit `--style` for genre-specific novels.
 
 ### Running the Orchestrator
 
-The single `orchestrate` CLI command executes and supervises the lifecycle:
+The unified `orchestrate` CLI command executes and supervises the entire lifecycle.
+
+#### Unified Single-Command Novel Creation & Run
+
+Run a new novel directly from its source URL through export in one command:
+
+```powershell
+$env:PYTHONUTF8=1
+uv run python main.py orchestrate --url "<source-url>" --slug <book-slug> --style <style> [--limit <N>] [--formats epub,pdf] [-y]
+```
+
+- `--style`: Required for new workspaces. Recommend a style profile and confirm with the user before running.
+- `--limit <N>`: Freezes the workspace to the first `N` chapters of the discovered source catalog, generating a provenance-backed `reports/source-scope.yaml` with a cryptographic digest of the complete source. The scope limit cannot be modified on an existing workspace.
+- `-y`, `--yes`, `--auto-approve`: Clean-only auto-approval policy. Gates auto-approve **only** if the report contains zero warnings and zero errors. If any warning is detected, execution pauses safely for human review.
+
+#### Existing Workspace Execution
+
+Run all remaining phases or explicit phase bounds on an existing workspace:
 
 ```powershell
 # Full remaining pipeline (default: start at auto, stop after export)
 $env:PYTHONUTF8=1
-uv run python main.py orchestrate --workspace books/<book-slug>
+uv run python main.py orchestrate --workspace books/<book-slug> [-y]
 
 # Explicit phase bounds
 uv run python main.py orchestrate --workspace books/<book-slug> --start-at crawl --stop-after crawl
@@ -73,12 +90,24 @@ uv run python main.py orchestrate --workspace books/<book-slug> --start-at expor
 
 ### Gate Review and Human Approval Flow
 
-When a crawl or QA report contains warnings or requires human review, the orchestrator pauses and exits with code 2:
+When a crawl or QA report contains warnings or requires review:
 
-1. Inspect the review report with bounded file reading:
+#### Interactive Terminal Approval UX
+In an interactive TTY session, the orchestrator displays the gate summary, report path, report hash, chapter counts, and warnings, then prompts:
+```text
+Approve [y/N]?
+```
+- `y` / `Y`: Immediately resumes and approves the gate within the same process.
+- `n` / `N`: Rejects the checkpoint and halts as blocked (exit code 3).
+- `Enter` / EOF: Defers decision safely and exits with code 2 (`paused`).
+
+#### Headless and Scripted Approval Flow
+In non-TTY environments, when `--json` is supplied, or when running unattended:
+1. The orchestrator pauses and exits with code 2.
+2. Inspect the review report with bounded file reading:
    - Crawl report: `books/<book-slug>/reports/crawl.yaml`
    - QA report: `books/<book-slug>/reports/qa-report.yaml`
-2. Submit the operator decision:
+3. Submit the operator decision:
    ```powershell
    # Approve and proceed
    $env:PYTHONUTF8=1
@@ -88,6 +117,7 @@ When a crawl or QA report contains warnings or requires human review, the orches
    $env:PYTHONUTF8=1
    uv run python main.py orchestrate --workspace books/<book-slug> --resume --decision reject
    ```
+On resume, runtime policy options (start/stop phase, models, scope, timeouts) are locked to the values recorded in `run_summary.json` and overrides are rejected.
 
 ### Model Selection Flags
 
