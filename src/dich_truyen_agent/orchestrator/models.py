@@ -20,6 +20,7 @@ class OrchestratorConfig(BaseModel):
     workspace_root: Path
     start_at: str = "auto"
     stop_after: str = "export"
+    scope_limit: int | None = Field(default=None, gt=0)
     formats: list[str] = Field(default_factory=lambda: ["epub", "txt"])
     batch_size: int = 5
     timeout_seconds: int = 1800
@@ -49,14 +50,18 @@ class OrchestratorConfig(BaseModel):
     @classmethod
     def validate_start_at(cls, v: str) -> str:
         if v not in VALID_START_AT:
-            raise ValueError(f"invalid start_at: {v!r}; must be one of {VALID_START_AT}")
+            raise ValueError(
+                f"invalid start_at: {v!r}; must be one of {VALID_START_AT}"
+            )
         return v
 
     @field_validator("stop_after")
     @classmethod
     def validate_stop_after(cls, v: str) -> str:
         if v not in VALID_STOP_AFTER:
-            raise ValueError(f"invalid stop_after: {v!r}; must be one of {VALID_STOP_AFTER}")
+            raise ValueError(
+                f"invalid stop_after: {v!r}; must be one of {VALID_STOP_AFTER}"
+            )
         return v
 
     @field_validator(
@@ -87,7 +92,9 @@ class OrchestratorConfig(BaseModel):
         return self
 
     @classmethod
-    def resolve_batch_size(cls, explicit_batch_size: int | None = None, env_file: Path | None = None) -> int:
+    def resolve_batch_size(
+        cls, explicit_batch_size: int | None = None, env_file: Path | None = None
+    ) -> int:
         """Resolve translation batch size with precedence: CLI explicit -> .env / env var -> default 5."""
         if explicit_batch_size is not None and explicit_batch_size > 0:
             return explicit_batch_size

@@ -5,6 +5,7 @@ from pathlib import Path
 from dich_truyen_agent.crawler import validate_discovered_catalog
 from dich_truyen_agent.models import (
     ApprovalScope,
+    BookMetadata,
     BookState,
     ChapterCatalog,
     CrawlProfile,
@@ -13,6 +14,7 @@ from dich_truyen_agent.models import (
     StageStatus,
 )
 from dich_truyen_agent.paths import validate_workspace_relative_path, workspace_paths
+from dich_truyen_agent.scope import load_source_scope, validate_scope_catalog
 from dich_truyen_agent.storage import load_yaml_model
 
 
@@ -29,6 +31,46 @@ def build_crawl_report(
     catalog = load_yaml_model(paths.chapters, ChapterCatalog)
     state = load_yaml_model(paths.state, BookState)
 
+    book_metadata: BookMetadata | None = None
+    if paths.book.is_file():
+        try:
+            book_metadata = load_yaml_model(paths.book, BookMetadata)
+        except Exception:
+            book_metadata = None
+
+    source_discovered_count: int | None = None
+    scope_summary: str | None = None
+    blockers = []
+    warnings = []
+
+    if book_metadata is not None and book_metadata.scope_managed:
+        if not paths.source_scope.is_file():
+            blockers.append(
+                f"scope-managed workspace missing source scope record: {paths.source_scope}"
+            )
+        else:
+            try:
+                scope_record = load_source_scope(paths.source_scope)
+                scope_val = validate_scope_catalog(scope_record, catalog)
+                if not scope_val.is_valid:
+                    blockers.append(f"scope validation failed: {scope_val.reason}")
+
+                full_source_val = validate_discovered_catalog(scope_record.entries)
+                for b in full_source_val.get("blockers", []):
+                    if b not in blockers:
+                        blockers.append(f"source catalog blocker: {b}")
+                for w in full_source_val.get("warnings", []):
+                    if w not in warnings:
+                        warnings.append(w)
+
+                source_discovered_count = scope_record.source_count
+                if scope_record.mode == "prefix":
+                    scope_summary = f"prefix {scope_record.selected_count} of {scope_record.source_count}"
+                else:
+                    scope_summary = f"full {scope_record.source_count} chapters"
+            except Exception as e:
+                blockers.append(f"failed to load or validate source scope: {e}")
+
     # Determine scope
     max_chapters = settings.max_chapters
     target_chapters = catalog.chapters
@@ -40,12 +82,10 @@ def build_crawl_report(
 
     # Process counts and status from state
     state_by_id = {c.chapter_id: c for c in state.chapters}
-    
+
     completed_count = 0
     failed_count = 0
-    
-    blockers = []
-    warnings = []
+
     chapter_lengths = {}
     residue_findings = {}
     excerpts = {}
@@ -58,6 +98,7 @@ def build_crawl_report(
     # Rebuild discovered chapters mock list for validation
     from urllib.parse import urlparse
     from dich_truyen_agent.crawler import parse_chapter_ordinal, DiscoveredChapter
+
     for c in catalog.chapters:
         parsed = urlparse(c.source_url)
         source_id = parsed.path.strip("/")
@@ -70,10 +111,10 @@ def build_crawl_report(
                 source_id=source_id,
                 source_url=c.source_url,
                 original_title=c.original_title,
-                parsed_ordinal=parse_chapter_ordinal(c.original_title)
+                parsed_ordinal=parse_chapter_ordinal(c.original_title),
             )
         )
-    
+
     cat_val = validate_discovered_catalog(discovered_chapters)
     blockers.extend(cat_val["blockers"])
     warnings.extend(cat_val["warnings"])
@@ -89,17 +130,25 @@ def build_crawl_report(
         if raw_stage.status is StageStatus.COMPLETED:
             completed_count += 1
             if not raw_stage.canonical_path:
-                blockers.append(f"Chapter {tc.chapter_id} is marked complete but missing canonical path")
+                blockers.append(
+                    f"Chapter {tc.chapter_id} is marked complete but missing canonical path"
+                )
                 continue
 
             try:
-                raw_file = validate_workspace_relative_path(paths.root, raw_stage.canonical_path)
+                raw_file = validate_workspace_relative_path(
+                    paths.root, raw_stage.canonical_path
+                )
             except Exception as e:
-                blockers.append(f"Chapter {tc.chapter_id} canonical path is invalid: {e}")
+                blockers.append(
+                    f"Chapter {tc.chapter_id} canonical path is invalid: {e}"
+                )
                 continue
 
             if not raw_file.is_file():
-                blockers.append(f"Chapter {tc.chapter_id} raw file is missing: {raw_stage.canonical_path}")
+                blockers.append(
+                    f"Chapter {tc.chapter_id} raw file is missing: {raw_stage.canonical_path}"
+                )
                 continue
 
             try:
@@ -114,7 +163,9 @@ def build_crawl_report(
             if char_len == 0:
                 blockers.append(f"Chapter {tc.chapter_id} raw file is empty")
             elif char_len < 300:
-                warnings.append(f"Chapter {tc.chapter_id} raw body is unusually short ({char_len} chars)")
+                warnings.append(
+                    f"Chapter {tc.chapter_id} raw body is unusually short ({char_len} chars)"
+                )
 
             # Check for suspicious residue (HTML tags, script leftovers, cloudflare garbage)
             residue = []
@@ -124,10 +175,12 @@ def build_crawl_report(
                 residue.append("script_residue")
             if "cloudflare" in text.lower():
                 residue.append("cloudflare_markers")
-            
+
             if residue:
                 residue_findings[str(tc.chapter_id)] = residue
-                warnings.append(f"Chapter {tc.chapter_id} contains potential residue: {residue}")
+                warnings.append(
+                    f"Chapter {tc.chapter_id} contains potential residue: {residue}"
+                )
 
         elif raw_stage.status is StageStatus.ERROR:
             failed_count += 1
@@ -137,10 +190,12 @@ def build_crawl_report(
 
     # 3. Excerpts Generation (beginning, middle, end)
     completed_chapters = [
-        tc for tc in target_chapters
-        if state_by_id.get(tc.chapter_id) and state_by_id[tc.chapter_id].raw.status is StageStatus.COMPLETED
+        tc
+        for tc in target_chapters
+        if state_by_id.get(tc.chapter_id)
+        and state_by_id[tc.chapter_id].raw.status is StageStatus.COMPLETED
     ]
-    
+
     if completed_chapters:
         excerpt_positions = []
         # Beginning
@@ -155,13 +210,15 @@ def build_crawl_report(
         for tc in excerpt_positions:
             c_state = state_by_id[tc.chapter_id]
             try:
-                raw_file = validate_workspace_relative_path(paths.root, c_state.raw.canonical_path or "")
+                raw_file = validate_workspace_relative_path(
+                    paths.root, c_state.raw.canonical_path or ""
+                )
                 text = raw_file.read_text(encoding="utf-8")
-                
+
                 # Excerpt sections: beginning, middle, end of the chapter itself
                 beg_slice = text[:200].strip()
                 mid_start = max(0, len(text) // 2 - 100)
-                mid_slice = text[mid_start:mid_start+200].strip()
+                mid_slice = text[mid_start : mid_start + 200].strip()
                 end_slice = text[-200:].strip()
 
                 excerpts[str(tc.chapter_id)] = {
@@ -178,7 +235,11 @@ def build_crawl_report(
         scope = ApprovalScope.PARTIAL
 
     # Determine profile source location for metadata
-    profile_source_str = "local_override" if (paths.root / "crawl-profile.yaml").exists() else "shared_template"
+    profile_source_str = (
+        "local_override"
+        if (paths.root / "crawl-profile.yaml").exists()
+        else "shared_template"
+    )
 
     return CrawlReport(
         schema_version=1,
@@ -194,17 +255,28 @@ def build_crawl_report(
         chapter_lengths=chapter_lengths,
         suspicious_residue_findings=residue_findings,
         excerpts=excerpts,
+        source_discovered_count=source_discovered_count,
+        scope_summary=scope_summary,
     )
 
 
 def approval_blockers(report: CrawlReport) -> list[str]:
     """Extract blockers that refuse crawl approval."""
     blockers = list(report.blockers)
-    if report.discovered_count == 0 and "catalog contains no discovered chapters" not in blockers:
+    if (
+        report.discovered_count == 0
+        and "catalog contains no discovered chapters" not in blockers
+    ):
         blockers.append("catalog contains no discovered chapters")
     if report.scope != ApprovalScope.FULL:
-        blockers.append(f"full crawl scope required for approval, got {report.scope.value}")
-    if report.selected_count != report.discovered_count or report.completed_count != report.discovered_count:
-        blockers.append(f"incomplete crawl: {report.completed_count}/{report.discovered_count} chapters completed")
+        blockers.append(
+            f"full crawl scope required for approval, got {report.scope.value}"
+        )
+    if (
+        report.selected_count != report.discovered_count
+        or report.completed_count != report.discovered_count
+    ):
+        blockers.append(
+            f"incomplete crawl: {report.completed_count}/{report.discovered_count} chapters completed"
+        )
     return blockers
-

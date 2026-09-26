@@ -32,6 +32,13 @@ from dich_truyen_agent.models import (
     TranslationStyle,
 )
 from dich_truyen_agent.paths import validate_workspace_relative_path, workspace_paths
+from dich_truyen_agent.scope import (
+    build_source_scope,
+    compute_source_digest,
+    load_source_scope,
+    save_source_scope,
+    validate_scope_catalog,
+)
 from dich_truyen_agent.storage import (
     atomic_write_text,
     atomic_write_yaml,
@@ -45,7 +52,15 @@ from dich_truyen_agent.workspace import initialize_workspace
 
 def is_recoverable_exception(exc: Exception) -> bool:
     """Classify if an HTTP exception is recoverable and worthy of retry."""
-    if isinstance(exc, (httpx.TimeoutException, httpx.ConnectError, httpx.ConnectTimeout, httpx.ReadTimeout)):
+    if isinstance(
+        exc,
+        (
+            httpx.TimeoutException,
+            httpx.ConnectError,
+            httpx.ConnectTimeout,
+            httpx.ReadTimeout,
+        ),
+    ):
         return True
     if isinstance(exc, httpx.HTTPStatusError):
         return exc.response.status_code >= 500
@@ -59,9 +74,17 @@ def detect_anti_bot_blocking(html: str, status_code: int = 200) -> str | None:
 
     lower_html = html.lower()
     markers = [
-        "cloudflare protection", "captcha", "recaptcha", "hcaptcha", "security check",
-        "verify you are human", "robot check", "anti-bot", "ddos protection",
-        "please turn on javascript", "just a moment"
+        "cloudflare protection",
+        "captcha",
+        "recaptcha",
+        "hcaptcha",
+        "security check",
+        "verify you are human",
+        "robot check",
+        "anti-bot",
+        "ddos protection",
+        "please turn on javascript",
+        "just a moment",
     ]
     for marker in markers:
         if marker in lower_html:
@@ -76,6 +99,7 @@ async def crawl_book(
     project_root: Path,
     style_name: str | None = None,
     max_chapters: int = 0,
+    scope_limit: int | None = None,
     chapter_delay_seconds: float = 3.0,
     sleeper_fn=None,
     static_crawler_class=None,
@@ -85,6 +109,17 @@ async def crawl_book(
     books_root = Path(books_root).resolve()
     project_root = Path(project_root).resolve()
     paths = workspace_paths(books_root, book_slug)
+
+    if scope_limit is not None and scope_limit <= 0:
+        return OperationResult(
+            status=OperationStatus.BLOCKED,
+            reason=f"scope_limit must be positive, got {scope_limit}",
+        )
+    if scope_limit is not None and max_chapters > 0:
+        return OperationResult(
+            status=OperationStatus.BLOCKED,
+            reason="cannot specify both scope_limit and max_chapters",
+        )
 
     # Initialize crawler settings
     settings = CrawlSettings(
@@ -103,23 +138,77 @@ async def crawl_book(
         return OperationResult(
             status=OperationStatus.ERROR,
             reason=f"failed to load crawl profile: {e}",
-            orphan_temp_paths=[str(p) for p in find_orphan_temp_files(paths.root)] if paths.root.exists() else [],
+            orphan_temp_paths=(
+                [str(p) for p in find_orphan_temp_files(paths.root)]
+                if paths.root.exists()
+                else []
+            ),
         )
 
     # 2. Workspace Initialization / Resume
     is_new = not paths.root.exists()
     has_empty_catalog = False
+    book_metadata: BookMetadata | None = None
+    existing_catalog: ChapterCatalog | None = None
     if not is_new:
+        if paths.book.is_file():
+            try:
+                book_metadata = load_yaml_model(paths.book, BookMetadata)
+            except Exception:
+                pass
         try:
-            temp_catalog = load_yaml_model(paths.chapters, ChapterCatalog)
-            if not temp_catalog.chapters:
+            existing_catalog = load_yaml_model(paths.chapters, ChapterCatalog)
+            if not existing_catalog.chapters:
                 has_empty_catalog = True
         except Exception:
             has_empty_catalog = True
 
+    # Validate existing nonempty catalog against scope
+    if not is_new and not has_empty_catalog and existing_catalog is not None:
+        if book_metadata is not None and book_metadata.scope_managed:
+            if not paths.source_scope.is_file():
+                await crawler.close()
+                return OperationResult(
+                    status=OperationStatus.BLOCKED,
+                    reason="scope-managed workspace is missing reports/source-scope.yaml; operator repair required",
+                )
+            try:
+                scope_record = load_source_scope(paths.source_scope)
+                val_res = validate_scope_catalog(scope_record, existing_catalog)
+                if not val_res.is_valid:
+                    await crawler.close()
+                    return OperationResult(
+                        status=OperationStatus.BLOCKED,
+                        reason=f"scope record mismatch: {val_res.reason}; operator repair required",
+                    )
+                if (
+                    scope_limit is not None
+                    and scope_limit != scope_record.requested_limit
+                ):
+                    await crawler.close()
+                    return OperationResult(
+                        status=OperationStatus.BLOCKED,
+                        reason=f"cannot change frozen scope limit from {scope_record.requested_limit} to {scope_limit}",
+                    )
+            except Exception as e:
+                await crawler.close()
+                return OperationResult(
+                    status=OperationStatus.BLOCKED,
+                    reason=f"failed to load source scope: {e}; operator repair required",
+                )
+        else:
+            if scope_limit is not None:
+                await crawler.close()
+                return OperationResult(
+                    status=OperationStatus.BLOCKED,
+                    reason="cannot apply scope_limit to an existing legacy workspace with nonempty catalog",
+                )
+
+    rebuilt_from_scope = False
     try:
         if is_new or has_empty_catalog:
             # For new book or empty catalog, we fetch index to build catalog & metadata
+            html_content = None
             try:
                 raw_bytes, http_charset = await crawler.fetch(source_url)
                 html_content, chosen_encoding, provenance = decode_html(
@@ -138,86 +227,199 @@ async def crawl_book(
                         purpose="index",
                     )
                 except Exception as playwright_err:
-                    await crawler.close()
-                    return OperationResult(
-                        status=OperationStatus.ERROR,
-                        reason=f"failed to fetch book index (static fetch failed with: {e}, playwright fallback failed with: {playwright_err})",
-                    )
-
-            # Discover and validate catalog
-            discovered = discover_catalog(html_content, source_url, profile_source.profile)
-            if not discovered:
-                # Try Playwright fallback if we haven't already used it
-                if "fallback_renderer" not in locals():
-                    try:
-                        fallback_renderer = renderer_instance or PlaywrightRenderer()
-                        html_content = await fallback_renderer.render(
-                            source_url,
-                            profile_source.profile,
-                            purpose="index",
+                    # Crash recovery: if index fetch fails but valid scope record exists, rebuild selected catalog
+                    rebuilt_from_scope = False
+                    if has_empty_catalog and paths.source_scope.is_file():
+                        try:
+                            scope_record = load_source_scope(paths.source_scope)
+                            selected_discovered = scope_record.entries[
+                                : scope_record.selected_count
+                            ]
+                            rebuilt_catalog = to_chapter_catalog(selected_discovered)
+                            rebuilt_state = BookState(
+                                chapters=[
+                                    ChapterState(chapter_id=ch.chapter_id)
+                                    for ch in rebuilt_catalog.chapters
+                                ]
+                            )
+                            atomic_write_yaml(paths.chapters, rebuilt_catalog)
+                            atomic_write_yaml(paths.state, rebuilt_state)
+                            has_empty_catalog = False
+                            rebuilt_from_scope = True
+                        except Exception:
+                            pass
+                    if not rebuilt_from_scope and (has_empty_catalog or is_new):
+                        await crawler.close()
+                        return OperationResult(
+                            status=OperationStatus.ERROR,
+                            reason=f"failed to fetch book index (static fetch failed with: {e}, playwright fallback failed with: {playwright_err})",
                         )
-                        discovered = discover_catalog(html_content, source_url, profile_source.profile)
-                    except Exception:
-                        pass
-                
+
+            if not rebuilt_from_scope:
+                # Discover and validate catalog
+                discovered = discover_catalog(
+                    html_content, source_url, profile_source.profile
+                )
                 if not discovered:
+                    # Try Playwright fallback if we haven't already used it
+                    if "fallback_renderer" not in locals():
+                        try:
+                            fallback_renderer = (
+                                renderer_instance or PlaywrightRenderer()
+                            )
+                            html_content = await fallback_renderer.render(
+                                source_url,
+                                profile_source.profile,
+                                purpose="index",
+                            )
+                            discovered = discover_catalog(
+                                html_content, source_url, profile_source.profile
+                            )
+                        except Exception:
+                            pass
+
+                    if not discovered:
+                        if has_empty_catalog and paths.source_scope.is_file():
+                            try:
+                                scope_record = load_source_scope(paths.source_scope)
+                                selected_discovered = scope_record.entries[
+                                    : scope_record.selected_count
+                                ]
+                                rebuilt_catalog = to_chapter_catalog(
+                                    selected_discovered
+                                )
+                                rebuilt_state = BookState(
+                                    chapters=[
+                                        ChapterState(chapter_id=ch.chapter_id)
+                                        for ch in rebuilt_catalog.chapters
+                                    ]
+                                )
+                                atomic_write_yaml(paths.chapters, rebuilt_catalog)
+                                atomic_write_yaml(paths.state, rebuilt_state)
+                                has_empty_catalog = False
+                                rebuilt_from_scope = True
+                            except Exception:
+                                pass
+                        if not rebuilt_from_scope:
+                            await crawler.close()
+                            return OperationResult(
+                                status=OperationStatus.BLOCKED,
+                                reason="discovered catalog contains zero chapters; selector rule might be broken",
+                            )
+
+            if not rebuilt_from_scope:
+                findings = validate_discovered_catalog(discovered)
+                if findings["blockers"]:
                     await crawler.close()
                     return OperationResult(
                         status=OperationStatus.BLOCKED,
-                        reason="discovered catalog contains zero chapters; selector rule might be broken",
+                        reason=f"catalog discovery blocked: {findings['blockers']}",
                     )
 
-            findings = validate_discovered_catalog(discovered)
-            if findings["blockers"]:
-                await crawler.close()
-                return OperationResult(
-                    status=OperationStatus.BLOCKED,
-                    reason=f"catalog discovery blocked: {findings['blockers']}",
+                # Check if scope record already existed and source changed
+                if paths.source_scope.is_file():
+                    try:
+                        existing_scope = load_source_scope(paths.source_scope)
+                        if (
+                            compute_source_digest(discovered)
+                            != existing_scope.source_digest
+                        ):
+                            await crawler.close()
+                            return OperationResult(
+                                status=OperationStatus.BLOCKED,
+                                reason="catalog-changed: source catalog digest differs from frozen scope record",
+                            )
+                    except Exception as e:
+                        if "catalog-changed" in str(e):
+                            raise
+
+                is_scoped = (scope_limit is not None) or (
+                    book_metadata is not None and book_metadata.scope_managed
                 )
+                if is_scoped:
+                    try:
+                        effective_limit = scope_limit
+                        if effective_limit is None and paths.source_scope.is_file():
+                            existing_scope = load_source_scope(paths.source_scope)
+                            effective_limit = existing_scope.requested_limit
+                        scope_record = build_source_scope(
+                            discovered, source_url, limit=effective_limit
+                        )
+                    except Exception as exc:
+                        await crawler.close()
+                        return OperationResult(
+                            status=OperationStatus.BLOCKED,
+                            reason=f"failed to build source scope: {exc}",
+                        )
+                    selected_discovered = discovered[: scope_record.selected_count]
+                    catalog = to_chapter_catalog(selected_discovered)
+                    scope_managed = True
+                else:
+                    catalog = to_chapter_catalog(discovered)
+                    scope_managed = False
 
-            catalog = to_chapter_catalog(discovered)
+                if is_new:
+                    # Extract book title automatically
+                    soup = BeautifulSoup(html_content, "lxml")
+                    title_tag = soup.find("title")
+                    title = title_tag.get_text().strip() if title_tag else book_slug
+                    title = re.split(r"[-_|_]|–", title)[0].strip()
 
-            if is_new:
-                # Extract book title automatically
-                soup = BeautifulSoup(html_content, "lxml")
-                title_tag = soup.find("title")
-                title = title_tag.get_text().strip() if title_tag else book_slug
-                title = re.split(r'[-_|_]|–', title)[0].strip()
+                    metadata = BookMetadata(
+                        book_slug=book_slug,
+                        source_url=source_url,
+                        title=title,
+                        author="Unknown",
+                        scope_managed=scope_managed,
+                    )
 
-                metadata = BookMetadata(
-                    book_slug=book_slug,
-                    source_url=source_url,
-                    title=title,
-                    author="Unknown",
-                )
+                    # Setup style path
+                    style_path = None
+                    if style_name:
+                        style_path = (
+                            project_root / "templates" / "styles" / f"{style_name}.yaml"
+                        )
+                        if not style_path.exists():
+                            style_path = (
+                                project_root / "templates" / "styles" / f"{style_name}"
+                            )
+                    style = load_selected_style(project_root, style_path)
 
-                # Setup style path
-                style_path = None
-                if style_name:
-                    style_path = project_root / "templates" / "styles" / f"{style_name}.yaml"
-                    if not style_path.exists():
-                        style_path = project_root / "templates" / "styles" / f"{style_name}"
-                style = load_selected_style(project_root, style_path)
+                    init_res = initialize_workspace(
+                        books_root, metadata, catalog, style
+                    )
+                    if init_res.status is OperationStatus.BLOCKED:
+                        await crawler.close()
+                        return init_res
 
-                init_res = initialize_workspace(books_root, metadata, catalog, style)
-                if init_res.status is OperationStatus.BLOCKED:
-                    await crawler.close()
-                    return init_res
+                    # Ensure source-scope is saved in initialized workspace
+                    if is_scoped:
+                        save_source_scope(paths.source_scope, scope_record)
 
-                # Install profile locally
-                snapshot_local = paths.root / "crawl-profile.yaml"
-                atomic_write_yaml(snapshot_local, profile_source.profile)
-            else:
-                # Update existing workspace catalog and state
-                state = BookState(
-                    chapters=[ChapterState(chapter_id=chapter.chapter_id) for chapter in catalog.chapters]
-                )
-                atomic_write_yaml(paths.chapters, catalog)
-                atomic_write_yaml(paths.state, state)
-                # Install profile locally if not present
-                snapshot_local = paths.root / "crawl-profile.yaml"
-                if not snapshot_local.exists():
+                    # Install profile locally
+                    snapshot_local = paths.root / "crawl-profile.yaml"
                     atomic_write_yaml(snapshot_local, profile_source.profile)
+                else:
+                    if is_scoped:
+                        save_source_scope(paths.source_scope, scope_record)
+                    if scope_managed:
+                        if book_metadata is None and paths.book.is_file():
+                            book_metadata = load_yaml_model(paths.book, BookMetadata)
+                        if book_metadata is not None:
+                            book_metadata.scope_managed = True
+                            atomic_write_yaml(paths.book, book_metadata)
+                    state = BookState(
+                        chapters=[
+                            ChapterState(chapter_id=chapter.chapter_id)
+                            for chapter in catalog.chapters
+                        ]
+                    )
+                    atomic_write_yaml(paths.chapters, catalog)
+                    atomic_write_yaml(paths.state, state)
+                    # Install profile locally if not present
+                    snapshot_local = paths.root / "crawl-profile.yaml"
+                    if not snapshot_local.exists():
+                        atomic_write_yaml(snapshot_local, profile_source.profile)
 
         else:
             # Existing workspace check
@@ -252,7 +454,7 @@ async def crawl_book(
 
     # Map target chapters to ChapterState records
     state_by_id = {c.chapter_id: c for c in state.chapters}
-    
+
     # Fill in any missing chapter state records
     modified_state = False
     for tc in target_chapters:
@@ -261,14 +463,14 @@ async def crawl_book(
             state.chapters.append(c_state)
             state_by_id[tc.chapter_id] = c_state
             modified_state = True
-    
+
     if modified_state:
         atomic_write_yaml(paths.state, state)
 
     # 4. Sequential body download
     completed_in_run = 0
     total_completed = 0
-    
+
     # Progress helper
     def get_progress() -> ProgressSummary:
         comp = sum(1 for ch in state.chapters if ch.raw.status is StageStatus.COMPLETED)
@@ -287,8 +489,13 @@ async def crawl_book(
 
             # Resume: check completed raw artifacts
             if chapter_state.raw.status is StageStatus.COMPLETED:
-                raw_file = validate_workspace_relative_path(paths.root, chapter_state.raw.canonical_path or "")
-                if raw_file.is_file() and sha256_file(raw_file) == chapter_state.raw.sha256:
+                raw_file = validate_workspace_relative_path(
+                    paths.root, chapter_state.raw.canonical_path or ""
+                )
+                if (
+                    raw_file.is_file()
+                    and sha256_file(raw_file) == chapter_state.raw.sha256
+                ):
                     total_completed += 1
                     continue
                 else:
@@ -321,7 +528,9 @@ async def crawl_book(
                     else:
                         raw_bytes, http_charset = await crawler.fetch(tc.source_url)
                         html_body, enc, prov = decode_html(
-                            raw_bytes, profile_source.profile.encoding.chapter, http_charset
+                            raw_bytes,
+                            profile_source.profile.encoding.chapter,
+                            http_charset,
                         )
                         encoding_info = (enc, prov)
 
@@ -337,17 +546,27 @@ async def crawl_book(
                             status=OperationStatus.BLOCKED,
                             reason=f"Chapter {tc.chapter_id} stopped: anti-bot/CAPTCHA challenge detected on attempt {attempts}: {challenge}",
                             progress=progress_summary,
-                            orphan_temp_paths=[str(p) for p in find_orphan_temp_files(paths.root)],
+                            orphan_temp_paths=[
+                                str(p) for p in find_orphan_temp_files(paths.root)
+                            ],
                         )
 
                     # Extraction validation
                     try:
                         # Extract chapter validates threshold internally
-                        extracted = extract_chapter(html_body, tc.source_url, profile_source.profile, encoding_info)
+                        extracted = extract_chapter(
+                            html_body,
+                            tc.source_url,
+                            profile_source.profile,
+                            encoding_info,
+                        )
                         break  # Extraction succeeded! Break retry loop
                     except Exception as extraction_err:
                         # Check if extraction failed due to missing rendered JS content
-                        is_empty_or_small = "selector" in str(extraction_err).lower() or "threshold" in str(extraction_err).lower()
+                        is_empty_or_small = (
+                            "selector" in str(extraction_err).lower()
+                            or "threshold" in str(extraction_err).lower()
+                        )
                         if not use_playwright and is_empty_or_small:
                             # Switch transport to Playwright and try again immediately (counts as one retry step)
                             use_playwright = True
@@ -359,11 +578,13 @@ async def crawl_book(
                     last_error = str(exc)
                     # Non-recoverable error stops batch immediately
                     if not is_recoverable_exception(exc) and not use_playwright:
-                        if isinstance(exc, httpx.HTTPStatusError) and exc.response.status_code in (403, 429):
+                        if isinstance(
+                            exc, httpx.HTTPStatusError
+                        ) and exc.response.status_code in (403, 429):
                             use_playwright = True
                             attempts -= 1  # Offset attempt counter to allow browser fallback immediately
                             continue
-                    
+
                     if not is_recoverable_exception(exc):
                         chapter_state.raw = StageRecord(
                             status=StageStatus.ERROR,
@@ -376,7 +597,9 @@ async def crawl_book(
                             status=OperationStatus.ERROR,
                             reason=f"Chapter {tc.chapter_id} sequential crawl stopped due to non-recoverable error: {exc}",
                             progress=progress_summary,
-                            orphan_temp_paths=[str(p) for p in find_orphan_temp_files(paths.root)],
+                            orphan_temp_paths=[
+                                str(p) for p in find_orphan_temp_files(paths.root)
+                            ],
                         )
 
                     # Backoff sleep before retry if recoverable
@@ -397,18 +620,20 @@ async def crawl_book(
                     status=OperationStatus.ERROR,
                     reason=f"Chapter {tc.chapter_id} sequential crawl stopped after {max_attempts} exhausted attempts. Last error: {last_error}",
                     progress=progress_summary,
-                    orphan_temp_paths=[str(p) for p in find_orphan_temp_files(paths.root)],
+                    orphan_temp_paths=[
+                        str(p) for p in find_orphan_temp_files(paths.root)
+                    ],
                 )
 
             # 5. Success: Save raw file atomically and update state
             raw_filename = tc.raw_filename
             relative_raw_path = f"raw/{raw_filename}"
             full_raw_path = paths.root / relative_raw_path
-            
+
             # Format raw body cleanly: Title followed by paragraph text
             full_text_content = f"{extracted.title}\n\n{extracted.text}"
             atomic_write_text(full_raw_path, full_text_content)
-            
+
             h = sha256_file(full_raw_path)
             chapter_state.raw = StageRecord(
                 status=StageStatus.COMPLETED,
@@ -453,4 +678,6 @@ def inspect_workspace_for_crawl(workspace_root: Path) -> OperationResult:
             reason=f"invalid crawl workspace: {error}",
             orphan_temp_paths=[str(p) for p in find_orphan_temp_files(paths.root)],
         )
-    return OperationResult(status=OperationStatus.OK, reason="workspace crawl inspect passed")
+    return OperationResult(
+        status=OperationStatus.OK, reason="workspace crawl inspect passed"
+    )

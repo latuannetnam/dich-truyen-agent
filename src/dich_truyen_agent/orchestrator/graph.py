@@ -151,9 +151,11 @@ def build_orchestrator_graph(
         # Execute crawl subprocess via ops
         timeout = config.crawl_timeout_seconds if config else 1800
         delay = 3.0
+        scope_limit = getattr(config, "scope_limit", None) if config else None
         crawl_res = ops.run_crawl(
             workspace_root,
             max_chapters=0,
+            scope_limit=scope_limit,
             delay_seconds=delay,
             timeout_seconds=timeout,
         )

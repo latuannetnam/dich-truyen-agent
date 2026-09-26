@@ -85,6 +85,7 @@ def build_parser() -> argparse.ArgumentParser:
     crawl.add_argument("--source-url", required=True)
     crawl.add_argument("--style")
     crawl.add_argument("--max-chapters", type=int, default=0)
+    crawl.add_argument("--scope-limit", type=int, default=None)
     crawl.add_argument("--chapter-delay-seconds", type=float, default=3.0)
     add_json_flag(crawl)
 
@@ -258,6 +259,17 @@ def run_command(args: argparse.Namespace) -> OperationResult:
         import asyncio
         from dich_truyen_agent.crawl_batch import crawl_book
 
+        if args.scope_limit is not None and args.scope_limit <= 0:
+            return OperationResult(
+                status=OperationStatus.BLOCKED,
+                reason="--scope-limit must be a positive integer",
+            )
+        if args.scope_limit is not None and args.max_chapters > 0:
+            return OperationResult(
+                status=OperationStatus.BLOCKED,
+                reason="cannot specify both --scope-limit and --max-chapters",
+            )
+
         result = asyncio.run(
             crawl_book(
                 books_root=args.books_root,
@@ -266,6 +278,7 @@ def run_command(args: argparse.Namespace) -> OperationResult:
                 project_root=PROJECT_ROOT,
                 style_name=args.style,
                 max_chapters=args.max_chapters,
+                scope_limit=args.scope_limit,
                 chapter_delay_seconds=args.chapter_delay_seconds,
             )
         )

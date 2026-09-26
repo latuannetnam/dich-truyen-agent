@@ -447,6 +447,8 @@ class CrawlReport(PersistedModel):
     chapter_lengths: dict[str, int] = Field(default_factory=dict)
     suspicious_residue_findings: dict[str, list[str]] = Field(default_factory=dict)
     excerpts: dict[str, dict[str, str]] = Field(default_factory=dict)
+    source_discovered_count: int | None = Field(default=None, ge=0)
+    scope_summary: str | None = None
 
 
 class GlossaryTerm(PersistedModel):
