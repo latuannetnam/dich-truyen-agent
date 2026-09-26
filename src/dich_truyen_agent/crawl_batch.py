@@ -102,7 +102,7 @@ def extract_title_from_index_html(html_content: str) -> str | None:
     if not title_tag:
         return None
     raw_title = title_tag.get_text().strip()
-    cleaned = re.split(r"[-_|_]|–", raw_title)[0].strip()
+    cleaned = re.split(r"最新章节|无弹窗|[-_|_]|–", raw_title)[0].strip()
     if not cleaned or cleaned.lower() in {"novel", "index", "home", "untitled"}:
         return None
     return cleaned

@@ -225,8 +225,14 @@ class BookOrchestrator:
         try:
             import asyncio
             from dich_truyen_agent.crawl_batch import discover_initial_title
+            from dich_truyen_agent.paths import find_project_root
 
-            return asyncio.run(discover_initial_title(source_url, workspace_root))
+            project_root = find_project_root(workspace_root)
+            return asyncio.run(
+                discover_initial_title(
+                    project_root, source_url, workspace_root=workspace_root
+                )
+            )
         except Exception:
             return None
 
